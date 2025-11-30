@@ -10,15 +10,15 @@ The goal was to solve "lean burn" issues caused by high draft in a custom vent s
 * **Enclosure:** 12-Way Surface Mount DIN Rail Box
 * **Safety:** The original "Over-Temp" snap switch is hardwired in series with the Auger motor.
 * **Inputs:**
+    * Shutdown Button (Red, DIN-rail mount)
     * Start Button (Green, DIN-rail mount)
-    * Stop Button (Red, DIN-rail mount)
-    * Vacuum Switch (Original stove sensor)
     * Proof of Fire Switch (Original stove sensor)
+    * Vacuum Switch (Original stove sensor)
 
 ## Wiring Logic
 See `wiring_diagram.png` for the visual layout.
-* **Auger Safety:** Wired as `Shelly Output O2 -> Over Temp Switch -> Auger Motor`. This ensures a physical hard-cut of fuel if the stove overheats, regardless of software state.
-* **Convection Fan:** Wired to Shelly Output O1. The fan runs based on the Shelly logic (Startup/Shutdown modes) AND the physical 120°F snap switch.
+* **Auger Safety:** Wired as `Shelly Output O3 -> Over Temp Switch -> Auger Motor`. This ensures a physical hard-cut of fuel if the stove overheats, regardless of software state.
+* **Convection Fan:** Wired to Shelly Output O4. The fan runs based on the Shelly logic (Startup/Shutdown modes) AND the physical 120°F snap switch.
 
 ## Software Logic (`script.js`)
 The Javascript code runs directly on the Shelly Pro 4PM.
