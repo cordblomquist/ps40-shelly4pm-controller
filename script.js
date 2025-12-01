@@ -1,21 +1,25 @@
-// WINSLOW PS40 CONTROLLER - FACTORY STARTUP PROFILE
-// -------------------------------------------------
+// WINSLOW PS40 CONTROLLER - FINAL PRODUCTION BUILD
+// ------------------------------------------------
 
-// 1. CONFIGURATION (MAPPED TO YOUR WIRING)
-// ----------------------------------------
-// RELAY OUTPUTS (0-Based Index)
-let R_EXHAUST  = 0; // O1: Combustion Blower
+// 1. PIN CONFIGURATION
+// --------------------
+// Mapped strictly to your text list:
+// O1=Combustion, O2=Ignitor, O3=Auger, O4=Convection
+
+// OUTPUTS (Shelly uses 0-based indexing: 0=O1, 1=O2, etc.)
+let R_EXHAUST  = 0; // O1: Combustion Fan
 let R_IGNITER  = 1; // O2: Ignitor
 let R_AUGER    = 2; // O3: Auger
 let R_CONV_FAN = 3; // O4: Convection Fan
 
-// INPUTS (0-Based Index)
-let I_VACUUM    = 0; // S1: Vacuum Switch
-let I_POF_SNAP  = 1; // S2: Proof of Fire
-let I_START_BTN = 2; // S3: Green Start Button
-let I_STOP_BTN  = 3; // S4: Red Shutdown Button
+// INPUTS (Shelly uses 0-based indexing: 0=S1, 1=S2, etc.)
+let I_STOP_BTN  = 0; // S1: Shutdown Switch
+let I_START_BTN = 1; // S2: Start Switch
+let I_POF_SNAP  = 2; // S3: Proof of Fire
+let I_VACUUM    = 3; // S4: Vacuum Switch
 
-// TIMING PROFILES (milliseconds)
+// 2. TIMING PROFILES (milliseconds)
+// ---------------------------------
 // Phase 3: "Ramp Up" (Aggressive factory setting)
 let RAMP_ON     = 4000; 
 let RAMP_OFF    = 4000;
@@ -34,18 +38,18 @@ let AUTO_PURGE  = 20 * 60 * 1000; // 20 mins purge on power connect
 
 // STATE VARIABLES
 let state = "IDLE"; 
-let subState = ""; // Tracks the 4 startup phases
+let subState = ""; 
 let activeOnTime = 0;
 let activeOffTime = 0;
 let shutdownTimer = null;
-let startupTimer = null; // Main startup sequence tracker
+let startupTimer = null;
 
-print("Winslow Controller: Factory Profile Loaded");
+print("Winslow Controller: Ready");
 
-// 2. POWER ON SEQUENCE
+// 3. POWER ON SEQUENCE
 startPurgeMode(AUTO_PURGE);
 
-// 3. LOGIC FUNCTIONS
+// 4. LOGIC FUNCTIONS
 // ------------------
 
 function startPurgeMode(time) {
@@ -86,7 +90,7 @@ function startStartup() {
     // PHASE 1: PRIME (0:00 to 1:30) - Constant Feed
     // -----------------------------------------------------
     print("Phase 1: PRIME (Filling Pot)");
-    Shelly.call("Switch.Set", { id: R_AUGER, on: true }); // Auger Continuous
+    Shelly.call("Switch.Set", { id: R_AUGER, on: true }); 
 
     // Schedule Phase 2
     startupTimer = Timer.set(T_PRIME_END, false, function() {
@@ -106,18 +110,13 @@ function startStartup() {
             subState = "RAMP";
             activeOnTime = RAMP_ON;
             activeOffTime = RAMP_OFF;
-            runAugerCycle(); // Start the loop
+            runAugerCycle(); 
 
             // Schedule Phase 4
             startupTimer = Timer.set(T_RUN_START - T_IGNITE_END, false, function() {
                 // -----------------------------------------
                 // PHASE 4: RUN MODE (11:00+) - 3s/5s Cycle
                 // -----------------------------------------
-                // Only switch to Run if Fire is Proven (Safety)
-                // We check POF status by "peeking" via logic, 
-                // but usually the Event Handler handles this.
-                // Here we force the transition if safety passes.
-                
                 checkRunTransition();
             });
         });
@@ -125,10 +124,7 @@ function startStartup() {
 }
 
 function checkRunTransition() {
-    // We hit the 11-minute mark.
-    // If POF input is closed, we enter RUN.
-    // If POF is open, we shutdown.
-    
+    // Check POF Input (I_POF_SNAP / S3 / Input 2)
     Shelly.call("Input.GetStatus", { id: I_POF_SNAP }, function(res) {
         if (res && res.state) {
             print("Phase 4: RUN MODE REACHED (Igniter Off)");
@@ -148,7 +144,6 @@ function checkRunTransition() {
 }
 
 function runAugerCycle() {
-    // Logic: Only run loop if we are in RAMP or RUNNING phases
     if (subState !== "RAMP" && state !== "RUNNING") {
         Shelly.call("Switch.Set", { id: R_AUGER, on: false });
         return;
@@ -172,39 +167,37 @@ function triggerShutdown(reason) {
     startPurgeMode(SHUTDOWN);
 }
 
-// 4. INPUT HANDLERS
-// -----------------
+// 5. INPUT EVENT HANDLERS
+// -----------------------
 Shelly.addEventHandler(function(event) {
     if (typeof event.info.state === 'undefined') return;
     
     let id = event.info.id;
     let active = event.info.state; 
 
-    // S3: START BUTTON (Green)
+    // S2: START BUTTON (Input 1)
     if (id === I_START_BTN && active) {
         if (state === "IDLE" || state === "PURGING") {
             startStartup();
         }
     }
 
-    // S4: STOP BUTTON (Red)
+    // S1: STOP BUTTON (Input 0)
     if (id === I_STOP_BTN && active) {
         triggerShutdown("Manual Stop");
     }
 
-    // S1: VACUUM (Safety)
+    // S4: VACUUM (Input 3)
     if (id === I_VACUUM) {
         if (!active && (state === "STARTUP" || state === "RUNNING")) {
             triggerShutdown("Vacuum Fail");
         }
     }
     
-    // S2: POF (Loss of fire while running)
+    // S3: POF (Input 2)
     if (id === I_POF_SNAP) {
         if (state === "RUNNING" && !active) {
             triggerShutdown("Fire Out");
         }
-        // Note: We don't auto-switch to RUN on POF close anymore.
-        // We wait for the 11-min timer to finish Phase 3 to ensure full coal bed.
     }
 });
