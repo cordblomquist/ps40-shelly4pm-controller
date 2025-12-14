@@ -28,23 +28,23 @@
   * **Function:** Feeds pellets into the burn pot.
   * **Logic:** Cycles ON and OFF (e.g., 3s ON, 5s OFF).
 
-  > [!WARNING]
-  > **HARDWARE SAFETY INTERLOCK (INVISIBLE TO SOFTWARE)**
-  > There is a **High-Temperature Limit Switch** (Snap Disc) wired physically **in-line (series)** with the Auger Motor.
-  > * **Function:** If the hopper or feed tube exceeds safety limits (e.g., 200°F), this switch physically cuts power to the motor.
-  > * **Note:** The software cannot "see" this switch. The Shelly Dashboard may show the Auger as "ON," but if this safety switch is tripped, the motor will not turn. This is a redundant, fail-safe layer that overrides the software.
-  >
+> [!WARNING]
+> **HARDWARE SAFETY INTERLOCK (INVISIBLE TO SOFTWARE)**
+> There is a **High-Temperature Limit Switch** (Snap Disc) wired physically **in-line (series)** with the Auger Motor.
+> * **Function:** If the hopper or feed tube exceeds safety limits (e.g., 200°F), this switch physically cuts power to the motor.
+> * **Note:** The software cannot "see" this switch. The Shelly Dashboard may show the Auger as "ON," but if this safety switch is tripped, the motor will not turn. This is a redundant, fail-safe layer that overrides the software.
+>
 
 * **Switch 3 (O4): Convection Fan (Room Blower)**
   * **Function:** Blows warm air into the room.
   * **Logic:** Turned ON by the script during the run cycle.
 
-  > [!NOTE]
-  > **HARDWARE THERMAL INTERLOCK**
-  > There is a **Convection Snap Disc** (Temperature Switch) wired physically **in-line (series)** with the Convection Fan.
-  > * **Function:** This switch only closes when the stove body is hot (e.g., >110°F).
-  > * **Note:** This prevents the fan from blowing cold air during the first few minutes of startup. The Shelly script may turn the Relay "ON" immediately, but the fan will not actually spin until the stove warms up and this analog switch closes.
-  >
+> [!NOTE]
+> **HARDWARE THERMAL INTERLOCK**
+> There is a **Convection Snap Disc** (Temperature Switch) wired physically **in-line (series)** with the Convection Fan.
+> * **Function:** This switch only closes when the stove body is hot (e.g., >110°F).
+> * **Note:** This prevents the fan from blowing cold air during the first few minutes of startup. The Shelly script may turn the Relay "ON" immediately, but the fan will not actually spin until the stove warms up and this analog switch closes.
+>
 
 ### Input Configuration (Sensors & Switches)> [!IMPORTANT]
 
