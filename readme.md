@@ -71,11 +71,11 @@
 
 ---
 
-##3. Operational Logic & Modes
+## 3. Operational Logic & Modes
 
 The controller is a **Finite State Machine (FSM)**. This means the stove is always in one of four distinct "Modes" (Idle, Startup, Running, Purging). The script determines which components to run based on the current mode.
 
-###A. The Startup Sequence (Mode: `STARTUP`)
+### A. The Startup Sequence (Mode: `STARTUP`)
 
 Because pellet fuel requires very high heat to ignite, the stove cannot simply turn "On." It must execute a precise timing sequence to establish a flame safely.
 
@@ -101,7 +101,7 @@ Because pellet fuel requires very high heat to ignite, the stove cannot simply t
 
 
 
-###B. Run Mode (Mode: `RUNNING`)
+### B. Run Mode (Mode: `RUNNING`)
 
 Once the fire is established, the stove enters its main loop. The Auger Motor uses **Duty Cycle Modulation** to control the fire size.
 
@@ -111,7 +111,7 @@ Once the fire is established, the stove enters its main loop. The Auger Motor us
 
 
 
-###C. Shutdown & Purge (Mode: `PURGING`)'
+### C. Shutdown & Purge (Mode: `PURGING`)'
 
 This mode is triggered manually (Stop Button) or automatically (Safety Failure).
 
@@ -119,7 +119,7 @@ This mode is triggered manually (Stop Button) or automatically (Safety Failure).
 * **Duration:** 30 Minutes.
 * **Goal:** Burn up any remaining pellets in the pot and vent all smoke. The long duration ensures the stove is cool to the touch before the fans stop.
 
-###D. Idle (Mode: `IDLE`)
+### D. Idle (Mode: `IDLE`)
 * **Action:** All Relays OFF.
 * **Logic:** The script waits for the **Start Button** (Physical or Virtual).
 
