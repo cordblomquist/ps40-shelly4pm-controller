@@ -1,4 +1,8 @@
-#Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)##1. Project Overview**Objective:** Replace a failing or obsolete factory control board for a Winslow PS40 pellet stove with a modern, Wi-Fi-enabled industrial controller.
+#Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)
+
+##1. Project Overview
+
+**Objective:** Replace a failing or obsolete factory control board for a Winslow PS40 pellet stove with a modern, Wi-Fi-enabled industrial controller.
 
 **Core Hardware:** Shelly Pro 4PM (4-channel smart relay with DIN rail mounting).
 
@@ -8,13 +12,20 @@
 
 ---
 
-##2. Hardware Configuration###Wiring & Output Map (Relays)####Switch 0 (O1): Combustion Fan (Exhaust)* **Function:** Pulls air through the burn pot and vents smoke outside.
+##2. Hardware Configuration
+
+###Wiring & Output Map (Relays)
+
+####Switch 0 (O1): Combustion Fan (Exhaust)
+* **Function:** Pulls air through the burn pot and vents smoke outside.
 * **Safety Default:** Must be configured in Shelly settings as **"Power On Default: ON"**. This ensures the fan runs immediately if the device reboots or crashes, preventing smoke buildup.
 
-####Switch 1 (O2): Igniter* **Function:** Superheats air to light the pellets during the startup phase.
+####Switch 1 (O2): Igniter
+* **Function:** Superheats air to light the pellets during the startup phase.
 * **Logic:** Runs for the first few minutes of startup, then shuts off.
 
-####Switch 2 (O3): Auger Motor (Fuel Feed)* **Function:** Feeds pellets into the burn pot.
+####Switch 2 (O3): Auger Motor (Fuel Feed)
+* **Function:** Feeds pellets into the burn pot.
 * **Logic:** Cycles ON and OFF (e.g., 3s ON, 5s OFF).
 
 > [!WARNING]
@@ -25,7 +36,8 @@
 > 
 > 
 
-####Switch 3 (O4): Convection Fan (Room Blower)* **Function:** Blows warm air into the room.
+####Switch 3 (O4): Convection Fan (Room Blower)
+* **Function:** Blows warm air into the room.
 * **Logic:** Turned ON by the script during the run cycle.
 
 > [!NOTE]
@@ -71,11 +83,13 @@
 
 ###Two Modes of OperationThe script switches between two distinct profiles based on the "Thermostat" state (Boolean 200).
 
-####1. Low Fire (Pilot / Idle Mode)* **Trigger:** Virtual Switch 200 is `OFF` (False).
+####1. Low Fire (Pilot / Idle Mode)
+* **Trigger:** Virtual Switch 200 is `OFF` (False).
 * **Purpose:** Maintain the smallest possible fire to keep the stove active without overheating the room.
 * **Settings:** Hardcoded in the script (`LOW_ON = 3500ms`, `LOW_OFF = 4500ms`). This is the "Safety Floor."
 
-####2. High Fire (Heating Mode)* **Trigger:** Virtual Switch 200 is `ON` (True).
+####2. High Fire (Heating Mode)
+* **Trigger:** Virtual Switch 200 is `ON` (True).
 * **Purpose:** Generate maximum heat to warm the room.
 * **Settings:** User-adjustable via **Virtual Sliders**.
 * *Virtual Number 200:* Sets the ON duration.
@@ -85,9 +99,12 @@
 
 ---
 
-##4. Virtual Component DictionaryThese are software-defined controls created inside the Shelly "Components" interface. They do not exist physically but appear on the App Dashboard.
+##4. Virtual Component Dictionary
 
-###A. Virtual Switch (Boolean)* **ID:** `boolean:200`
+These are software-defined controls created inside the Shelly "Components" interface. They do not exist physically but appear on the App Dashboard.
+
+###A. Virtual Switch (Boolean)
+* **ID:** `boolean:200`
 * **Name:** `Thermostat` (or "Heat Demand")
 * **Function:** This is the input for your home heating needs.
 * *Usage:* You can toggle this manually in the app, or automate it using a Shelly H&T (Humidity & Temp) sensor scene.
@@ -95,7 +112,8 @@
 
 
 
-###B. Virtual Numbers (Sliders)* **ID:** `number:200`
+###B. Virtual Numbers (Sliders)
+* **ID:** `number:200`
 * **Name:** `High Fire ON`
 * **Range:** 1.0 – 10.0 (Seconds)
 * **Function:** Controls how long the auger spins during High Fire.
@@ -108,7 +126,9 @@
 
 
 
-###C. Virtual Buttons (Triggers)These are momentary "soft keys" used to send commands to the script.
+###C. Virtual Buttons (Triggers)
+
+These are momentary "soft keys" used to send commands to the script.
 
 * **ID:** `button:200`
 * **Name:** `Virtual Start`
