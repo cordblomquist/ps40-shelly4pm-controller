@@ -1,9 +1,3 @@
-Here is the complete project documentation formatted in **GitHub-flavored Markdown**. You can save this directly as `README.md` in your repository.
-
-I have utilized GitHub's specific alert syntax (e.g., `> [!WARNING]`) to highlight the critical safety interlocks, which renders beautifully on GitHub.
-
----
-
 #Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)##1. Project Overview**Objective:** Replace a failing or obsolete factory control board for a Winslow PS40 pellet stove with a modern, Wi-Fi-enabled industrial controller.
 
 **Core Hardware:** Shelly Pro 4PM (4-channel smart relay with DIN rail mounting).
@@ -144,7 +138,6 @@ I have utilized GitHub's specific alert syntax (e.g., `> [!WARNING]`) to highlig
 * **Crash Protection:** The code includes logic to clear "Ghost Timers" (timers from a previous state that persisted through a reboot or state change), ensuring the stove never unexpectedly shuts down in the middle of a burn.
 
 ---
-
 
 ##6. Quality Assurance (QA) Testing Protocol*Run these tests before using the stove for the season.*
 
