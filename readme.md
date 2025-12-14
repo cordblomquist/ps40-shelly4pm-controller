@@ -1,68 +1,68 @@
-#Project: Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)
-##1. Project Overview
+Here is the complete project documentation formatted in **GitHub-flavored Markdown**. You can save this directly as `README.md` in your repository.
 
-**Objective:** Replace a failing or obsolete factory control board for a Winslow PS40 pellet stove with a modern, Wi-Fi-enabled industrial controller.
+I have utilized GitHub's specific alert syntax (e.g., `> [!WARNING]`) to highlight the critical safety interlocks, which renders beautifully on GitHub.
+
+---
+
+#Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)##1. Project Overview**Objective:** Replace a failing or obsolete factory control board for a Winslow PS40 pellet stove with a modern, Wi-Fi-enabled industrial controller.
+
 **Core Hardware:** Shelly Pro 4PM (4-channel smart relay with DIN rail mounting).
+
 **Software Environment:** Shelly `mJS` (Micro-JavaScript) scripting engine.
+
 **Control Logic:** The stove operates on a "Combustion Loop" where the auger feeds fuel on a timed cycle (ON/OFF) based on heat demand, while safety sensors (Vacuum and Proof of Fire) monitor the stove's physical state to prevent hazards.
 
 ---
 
-##2. Hardware Configuration
-###Wiring & Output Map (Relays)
-* **Switch 0 (O1): Combustion Fan (Exhaust)**
-* **Function:** Pulls air through the burn pot and vents smoke outside.
+##2. Hardware Configuration###Wiring & Output Map (Relays)####Switch 0 (O1): Combustion Fan (Exhaust)* **Function:** Pulls air through the burn pot and vents smoke outside.
 * **Safety Default:** Must be configured in Shelly settings as **"Power On Default: ON"**. This ensures the fan runs immediately if the device reboots or crashes, preventing smoke buildup.
 
-
-* **Switch 1 (O2): Igniter**
-* **Function:** Superheats air to light the pellets during the startup phase.
+####Switch 1 (O2): Igniter* **Function:** Superheats air to light the pellets during the startup phase.
 * **Logic:** Runs for the first few minutes of startup, then shuts off.
 
-
-* **Switch 2 (O3): Auger Motor (Fuel Feed)**
-* **Function:** Feeds pellets into the burn pot.
+####Switch 2 (O3): Auger Motor (Fuel Feed)* **Function:** Feeds pellets into the burn pot.
 * **Logic:** Cycles ON and OFF (e.g., 3s ON, 5s OFF).
-* **⚠️ HARDWARE SAFETY INTERLOCK:**
-* There is a **High-Temperature Limit Switch** (Snap Disc) wired physically **in-line (series)** with the Auger Motor.
-* **Function:** If the hopper or feed tube exceeds safety limits (e.g., 200°F), this switch physically cuts power to the motor.
-* **Note:** The software cannot "see" this switch. The Shelly Dashboard may show the Auger as "ON," but if this safety switch is tripped, the motor will not turn. This is a redundant, fail-safe layer that overrides the software.
 
+> [!WARNING]
+> **HARDWARE SAFETY INTERLOCK (INVISIBLE TO SOFTWARE)**
+> There is a **High-Temperature Limit Switch** (Snap Disc) wired physically **in-line (series)** with the Auger Motor.
+> * **Function:** If the hopper or feed tube exceeds safety limits (e.g., 200°F), this switch physically cuts power to the motor.
+> * **Note:** The software cannot "see" this switch. The Shelly Dashboard may show the Auger as "ON," but if this safety switch is tripped, the motor will not turn. This is a redundant, fail-safe layer that overrides the software.
+> 
+> 
 
-
-
-* **Switch 3 (O4): Convection Fan (Room Blower)**
-* **Function:** Blows warm air into the room.
+####Switch 3 (O4): Convection Fan (Room Blower)* **Function:** Blows warm air into the room.
 * **Logic:** Turned ON by the script during the run cycle.
-* **⚠️ HARDWARE THERMAL INTERLOCK:**
-* There is a **Convection Snap Disc** (Temperature Switch) wired physically **in-line (series)** with the Convection Fan.
-* **Function:** This switch only closes when the stove body is hot (e.g., >110°F).
-* **Note:** This prevents the fan from blowing cold air during the first few minutes of startup. The Shelly script may turn the Relay "ON" immediately, but the fan will not actually spin until the stove warms up and this analog switch closes.
 
+> [!NOTE]
+> **HARDWARE THERMAL INTERLOCK**
+> There is a **Convection Snap Disc** (Temperature Switch) wired physically **in-line (series)** with the Convection Fan.
+> * **Function:** This switch only closes when the stove body is hot (e.g., >110°F).
+> * **Note:** This prevents the fan from blowing cold air during the first few minutes of startup. The Shelly script may turn the Relay "ON" immediately, but the fan will not actually spin until the stove warms up and this analog switch closes.
+> 
+> 
 
+###Input Configuration (Sensors & Switches)> [!IMPORTANT]
+> **Crucial Setting:** All inputs must be set to **"Detached"** mode in the Shelly App. This separates the physical switch from the relay, allowing the script to decide how to react to the signal.
 
-
-
-###Input Configuration (Sensors & Switches)
-* **Crucial Setting:** All inputs must be set to **"Detached"** mode in the Shelly App. This separates the physical switch from the relay, allowing the script to decide how to react to the signal.
 * **Input 0 (S1): Stop Button**
-* **Type:** Momentary Button.
-* **Function:** Triggers the shutdown/purge sequence.
+* *Type:* Momentary Button.
+* *Function:* Triggers the shutdown/purge sequence.
 
 
 * **Input 1 (S2): Start Button**
-* **Type:** Momentary Button.
-* **Function:** Initiates the Cold Start sequence.
+* *Type:* Momentary Button.
+* *Function:* Initiates the Cold Start sequence.
 
 
 * **Input 2 (S3): Proof of Fire (POF) Snap Disc**
-* **Type:** Switch (Toggle).
-* **Function:** Thermal switch on the exhaust housing. Closes when the stove is hot. Used to verify fire is present.
+* *Type:* Switch (Toggle).
+* *Function:* Thermal switch on the exhaust housing. Closes when the stove is hot. Used to verify fire is present.
 
 
 * **Input 3 (S4): Vacuum Switch**
-* **Type:** Switch (Toggle).
-* **Function:** Safety pressure switch. Opens if the door is ajar or the exhaust is blocked. Instantly cuts auger power via script logic if lost.
+* *Type:* Switch (Toggle).
+* *Function:* Safety pressure switch. Opens if the door is ajar or the exhaust is blocked. Instantly cuts auger power via script logic if lost.
 
 
 
@@ -77,15 +77,11 @@
 
 ###Two Modes of OperationThe script switches between two distinct profiles based on the "Thermostat" state (Boolean 200).
 
-**1. Low Fire (Pilot / Idle Mode)**
-
-* **Trigger:** Virtual Switch 200 is `OFF` (False).
+####1. Low Fire (Pilot / Idle Mode)* **Trigger:** Virtual Switch 200 is `OFF` (False).
 * **Purpose:** Maintain the smallest possible fire to keep the stove active without overheating the room.
 * **Settings:** Hardcoded in the script (`LOW_ON = 3500ms`, `LOW_OFF = 4500ms`). This is the "Safety Floor."
 
-**2. High Fire (Heating Mode)**
-
-* **Trigger:** Virtual Switch 200 is `ON` (True).
+####2. High Fire (Heating Mode)* **Trigger:** Virtual Switch 200 is `ON` (True).
 * **Purpose:** Generate maximum heat to warm the room.
 * **Settings:** User-adjustable via **Virtual Sliders**.
 * *Virtual Number 200:* Sets the ON duration.
@@ -105,8 +101,7 @@
 
 
 
-###B. Virtual Numbers (Sliders)
-* **ID:** `number:200`
+###B. Virtual Numbers (Sliders)* **ID:** `number:200`
 * **Name:** `High Fire ON`
 * **Range:** 1.0 – 10.0 (Seconds)
 * **Function:** Controls how long the auger spins during High Fire.
@@ -139,7 +134,7 @@
 
 ---
 
-##5. The "Brain": Script Version 5.0
+##5. The "Brain": Script Version 5.0*Current Production Build as of December 2025.*
 
 **Key Features:**
 
@@ -150,8 +145,8 @@
 
 ---
 
-##6. Quality Assurance (QA) Testing Protocol
-*Run these tests before using the stove for the season.*
+
+##6. Quality Assurance (QA) Testing Protocol*Run these tests before using the stove for the season.*
 
 | Test | Action | Expected Result |
 | --- | --- | --- |
