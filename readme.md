@@ -71,32 +71,57 @@
 
 ---
 
-## 3. Thermostat Logic & Feed Control
+##3. Operational Logic & Modes
 
-The "heart" of the controller is the Feed Rate logic. Unlike a gas furnace that is simply On or Off, a pellet stove must run continuously but vary the size of the fire.
+The controller is a **Finite State Machine (FSM)**. This means the stove is always in one of four distinct "Modes" (Idle, Startup, Running, Purging). The script determines which components to run based on the current mode.
 
-### The "Pulse" Principle
+###A. The Startup Sequence (Mode: `STARTUP`)
 
-The Auger Motor is a single-speed AC gear motor. To control the amount of fuel, we use **Duty Cycle Modulation**:
+Because pellet fuel requires very high heat to ignite, the stove cannot simply turn "On." It must execute a precise timing sequence to establish a flame safely.
 
-* **ON Time:** The auger turns and drops pellets.
-* **OFF Time:** The auger sits still, allowing the pellets to burn.
+1. **Phase 1: Prime (0s – 90s)**
+  * **Action:** Exhaust Fan ON, Igniter ON, Auger ON (Continuous).
+  * **Goal:** Fill the burn pot with a base layer of fresh pellets.
 
-### Two Modes of Operation
 
-The script switches between two distinct profiles based on the "Thermostat" state (Boolean 200).
+2. **Phase 2: Wait/Ignite (90s – 210s)**
+  * **Action:** Auger Stops. Igniter stays ON. Fans stay ON.
+  * **Goal:** The igniter superheats the air blowing onto the pellets. The "Wait" ensures we don't smother the spark with too much fuel.
 
-#### 1. Low Fire (Pilot / Idle Mode)
-* **Trigger:** Virtual Switch 200 is `OFF` (False).
-* **Purpose:** Maintain the smallest possible fire to keep the stove active without overheating the room.
-* **Settings:** Hardcoded in the script (`LOW_ON = 3500ms`, `LOW_OFF = 4500ms`). This is the "Safety Floor."
 
-#### 2. High Fire (Heating Mode)
-* **Trigger:** Virtual Switch 200 is `ON` (True).
-* **Purpose:** Generate maximum heat to warm the room.
-* **Settings:** User-adjustable via **Virtual Sliders**.
-  * *Virtual Number 200:* Sets the ON duration.
-  * *Virtual Number 201:* Sets the OFF duration.
+3. **Phase 3: Ramp Up (3.5min – 11min)**
+  * **Action:** Auger resumes pulsing (High Fire rate). Igniter stays ON.
+  * **Goal:** Feed fresh fuel to the small flame to grow it into a stable fire.
+
+
+4. **Phase 4: Transition Check**
+  * **Action:** The script checks the **Proof of Fire (POF)** sensor.
+  * **Success:** If HOT, transition to `RUNNING`. Igniter turns OFF.
+  * **Failure:** If COLD, trigger Safety Shutdown (No Fire Detected).
+
+
+
+###B. Run Mode (Mode: `RUNNING`)
+
+Once the fire is established, the stove enters its main loop. The Auger Motor uses **Duty Cycle Modulation** to control the fire size.
+
+* **Pulse Principle:** The auger is a single-speed motor. We control fuel amount by varying how long it runs versus how long it pauses.
+  * **High Fire (Heating):** Triggered when Virtual Thermostat (Boolean 200) is **ON**. Uses the "Virtual Slider" values (e.g., 4.5s ON / 3.5s OFF).
+  * **Low Fire (Pilot):** Triggered when Virtual Thermostat is **OFF**. Uses hardcoded safety values (3.5s ON / 4.5s OFF) to keep the fire alive without overheating the room.
+
+
+
+###C. Shutdown & Purge (Mode: `PURGING`)'
+
+This mode is triggered manually (Stop Button) or automatically (Safety Failure).
+
+* **Action:** Auger OFF (immediately). Igniter OFF. Exhaust & Convection Fans **ON**.
+* **Duration:** 30 Minutes.
+* **Goal:** Burn up any remaining pellets in the pot and vent all smoke. The long duration ensures the stove is cool to the touch before the fans stop.
+
+###D. Idle (Mode: `IDLE`)
+* **Action:** All Relays OFF.
+* **Logic:** The script waits for the **Start Button** (Physical or Virtual).
 
 ---
 
