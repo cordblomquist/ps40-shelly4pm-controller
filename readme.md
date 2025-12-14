@@ -1,4 +1,5 @@
-#Project: Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)##1. Project Overview
+#Project: Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)
+##1. Project Overview
 
 **Objective:** Replace a failing or obsolete factory control board for a Winslow PS40 pellet stove with a modern, Wi-Fi-enabled industrial controller.
 **Core Hardware:** Shelly Pro 4PM (4-channel smart relay with DIN rail mounting).
@@ -7,7 +8,9 @@
 
 ---
 
-##2. Hardware Configuration###Wiring & Output Map (Relays)* **Switch 0 (O1): Combustion Fan (Exhaust)**
+##2. Hardware Configuration
+###Wiring & Output Map (Relays)
+* **Switch 0 (O1): Combustion Fan (Exhaust)**
 * **Function:** Pulls air through the burn pot and vents smoke outside.
 * **Safety Default:** Must be configured in Shelly settings as **"Power On Default: ON"**. This ensures the fan runs immediately if the device reboots or crashes, preventing smoke buildup.
 
@@ -40,7 +43,8 @@
 
 
 
-###Input Configuration (Sensors & Switches)* **Crucial Setting:** All inputs must be set to **"Detached"** mode in the Shelly App. This separates the physical switch from the relay, allowing the script to decide how to react to the signal.
+###Input Configuration (Sensors & Switches)
+* **Crucial Setting:** All inputs must be set to **"Detached"** mode in the Shelly App. This separates the physical switch from the relay, allowing the script to decide how to react to the signal.
 * **Input 0 (S1): Stop Button**
 * **Type:** Momentary Button.
 * **Function:** Triggers the shutdown/purge sequence.
@@ -101,7 +105,8 @@
 
 
 
-###B. Virtual Numbers (Sliders)* **ID:** `number:200`
+###B. Virtual Numbers (Sliders)
+* **ID:** `number:200`
 * **Name:** `High Fire ON`
 * **Range:** 1.0 – 10.0 (Seconds)
 * **Function:** Controls how long the auger spins during High Fire.
@@ -134,7 +139,7 @@
 
 ---
 
-##5. The "Brain": Script Version 5.0*Current Production Build as of December 2025.*
+##5. The "Brain": Script Version 5.0
 
 **Key Features:**
 
@@ -145,7 +150,8 @@
 
 ---
 
-##6. Quality Assurance (QA) Testing Protocol*Run these tests before using the stove for the season.*
+##6. Quality Assurance (QA) Testing Protocol
+*Run these tests before using the stove for the season.*
 
 | Test | Action | Expected Result |
 | --- | --- | --- |
