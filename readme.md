@@ -1,4 +1,6 @@
-#Project: Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)##1. Project Overview**Objective:** Replace a failing or obsolete factory control board for a Winslow PS40 pellet stove with a modern, Wi-Fi-enabled industrial controller.
+#Project: Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)##1. Project Overview
+
+**Objective:** Replace a failing or obsolete factory control board for a Winslow PS40 pellet stove with a modern, Wi-Fi-enabled industrial controller.
 **Core Hardware:** Shelly Pro 4PM (4-channel smart relay with DIN rail mounting).
 **Software Environment:** Shelly `mJS` (Micro-JavaScript) scripting engine.
 **Control Logic:** The stove operates on a "Combustion Loop" where the auger feeds fuel on a timed cycle (ON/OFF) based on heat demand, while safety sensors (Vacuum and Proof of Fire) monitor the stove's physical state to prevent hazards.
