@@ -52,8 +52,8 @@
 > **Crucial Setting:** All inputs must be set to **"Detached"** mode in the Shelly App. This separates the physical switch from the relay, allowing the script to decide how to react to the signal.
 
 * **Input 0 (S1): Stop Button**
-> * *Type:* Momentary Button.
-> * *Function:* Triggers the shutdown/purge sequence.
+  * *Type:* Momentary Button.
+  * *Function:* Triggers the shutdown/purge sequence.
 
 
 * **Input 1 (S2): Start Button**
