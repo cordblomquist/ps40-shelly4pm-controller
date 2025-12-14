@@ -52,23 +52,23 @@
 > **Crucial Setting:** All inputs must be set to **"Detached"** mode in the Shelly App. This separates the physical switch from the relay, allowing the script to decide how to react to the signal.
 
 * **Input 0 (S1): Stop Button**
-* *Type:* Momentary Button.
-* *Function:* Triggers the shutdown/purge sequence.
+> * *Type:* Momentary Button.
+> * *Function:* Triggers the shutdown/purge sequence.
 
 
 * **Input 1 (S2): Start Button**
-* *Type:* Momentary Button.
-* *Function:* Initiates the Cold Start sequence.
+> * *Type:* Momentary Button.
+> * *Function:* Initiates the Cold Start sequence.
 
 
 * **Input 2 (S3): Proof of Fire (POF) Snap Disc**
-* *Type:* Switch (Toggle).
-* *Function:* Thermal switch on the exhaust housing. Closes when the stove is hot. Used to verify fire is present.
+> * *Type:* Switch (Toggle).
+> * *Function:* Thermal switch on the exhaust housing. Closes when the stove is hot. Used to verify fire is present.
 
 
 * **Input 3 (S4): Vacuum Switch**
-* *Type:* Switch (Toggle).
-* *Function:* Safety pressure switch. Opens if the door is ajar or the exhaust is blocked. Instantly cuts auger power via script logic if lost.
+> * *Type:* Switch (Toggle).
+> * *Function:* Safety pressure switch. Opens if the door is ajar or the exhaust is blocked. Instantly cuts auger power via script logic if lost.
 
 
 
@@ -92,8 +92,8 @@
 * **Trigger:** Virtual Switch 200 is `ON` (True).
 * **Purpose:** Generate maximum heat to warm the room.
 * **Settings:** User-adjustable via **Virtual Sliders**.
-* *Virtual Number 200:* Sets the ON duration.
-* *Virtual Number 201:* Sets the OFF duration.
+> * *Virtual Number 200:* Sets the ON duration.
+> * *Virtual Number 201:* Sets the OFF duration.
 
 
 
@@ -107,22 +107,22 @@ These are software-defined controls created inside the Shelly "Components" inter
 * **ID:** `boolean:200`
 * **Name:** `Thermostat` (or "Heat Demand")
 * **Function:** This is the input for your home heating needs.
-* *Usage:* You can toggle this manually in the app, or automate it using a Shelly H&T (Humidity & Temp) sensor scene.
-* *Logic:* `ON` = High Fire. `OFF` = Low Fire.
+> * *Usage:* You can toggle this manually in the app, or automate it using a Shelly H&T (Humidity & Temp) sensor scene.
+> * *Logic:* `ON` = High Fire. `OFF` = Low Fire.
 
 
 
 ### B. Virtual Numbers (Sliders)
 * **ID:** `number:200`
-* **Name:** `High Fire ON`
-* **Range:** 1.0 – 10.0 (Seconds)
-* **Function:** Controls how long the auger spins during High Fire.
+> * **Name:** `High Fire ON`
+> * **Range:** 1.0 – 10.0 (Seconds)
+> * **Function:** Controls how long the auger spins during High Fire.
 
 
 * **ID:** `number:201`
-* **Name:** `High Fire OFF`
-* **Range:** 1.0 – 10.0 (Seconds)
-* **Function:** Controls the pause between feeds.
+> * **Name:** `High Fire OFF`
+> * **Range:** 1.0 – 10.0 (Seconds)
+> * **Function:** Controls the pause between feeds.
 
 
 
@@ -131,18 +131,18 @@ These are software-defined controls created inside the Shelly "Components" inter
 These are momentary "soft keys" used to send commands to the script.
 
 * **ID:** `button:200`
-* **Name:** `Virtual Start`
-* **Function:** Starts the "Cold Sequence" (Prime -> Ignite -> Run).
+> * **Name:** `Virtual Start`
+> * **Function:** Starts the "Cold Sequence" (Prime -> Ignite -> Run).
 
 
 * **ID:** `button:201`
-* **Name:** `Virtual Stop`
-* **Function:** Triggers the Safety Shutdown (Purge).
+> * **Name:** `Virtual Stop`
+> * **Function:** Triggers the Safety Shutdown (Purge).
 
 
 * **ID:** `button:202`
-* **Name:** `Force Run`
-* **Function:** Bypasses the 15-minute startup sequence. Instantly turns on fans and auger without running the igniter.
+> * **Name:** `Force Run`
+> * **Function:** Bypasses the 15-minute startup sequence. Instantly turns on fans and auger without running the igniter.
 
 
 
