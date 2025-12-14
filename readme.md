@@ -69,8 +69,6 @@
   * *Type:* Switch (Toggle).
   * *Function:* Safety pressure switch. Opens if the door is ajar or the exhaust is blocked. Instantly cuts auger power via script logic if lost.
 
-
-
 ---
 
 ## 3. Thermostat Logic & Feed Control
@@ -97,10 +95,8 @@ The script switches between two distinct profiles based on the "Thermostat" stat
 * **Trigger:** Virtual Switch 200 is `ON` (True).
 * **Purpose:** Generate maximum heat to warm the room.
 * **Settings:** User-adjustable via **Virtual Sliders**.
-> * *Virtual Number 200:* Sets the ON duration.
-> * *Virtual Number 201:* Sets the OFF duration.
-
-
+  * *Virtual Number 200:* Sets the ON duration.
+  * *Virtual Number 201:* Sets the OFF duration.
 
 ---
 
@@ -148,8 +144,6 @@ These are momentary "soft keys" used to send commands to the script.
 * **ID:** `button:202`
   * **Name:** `Force Run`
   * **Function:** Bypasses the 15-minute startup sequence. Instantly turns on fans and auger without running the igniter.
-
-
 
 ---
 
