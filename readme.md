@@ -1,6 +1,6 @@
 # Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)
 
-##1. Project Overview
+## 1. Project Overview
 
 **Objective:** Replace a failing or obsolete factory control board for a Winslow PS40 pellet stove with a modern, Wi-Fi-enabled industrial controller.
 
@@ -12,19 +12,19 @@
 
 ---
 
-##2. Hardware Configuration
+## 2. Hardware Configuration
 
-###Wiring & Output Map (Relays)
+### Wiring & Output Map (Relays)
 
-####Switch 0 (O1): Combustion Fan (Exhaust)
+#### Switch 0 (O1): Combustion Fan (Exhaust)
 * **Function:** Pulls air through the burn pot and vents smoke outside.
 * **Safety Default:** Must be configured in Shelly settings as **"Power On Default: ON"**. This ensures the fan runs immediately if the device reboots or crashes, preventing smoke buildup.
 
-####Switch 1 (O2): Igniter
+#### Switch 1 (O2): Igniter
 * **Function:** Superheats air to light the pellets during the startup phase.
 * **Logic:** Runs for the first few minutes of startup, then shuts off.
 
-####Switch 2 (O3): Auger Motor (Fuel Feed)
+#### Switch 2 (O3): Auger Motor (Fuel Feed)
 * **Function:** Feeds pellets into the burn pot.
 * **Logic:** Cycles ON and OFF (e.g., 3s ON, 5s OFF).
 
@@ -36,7 +36,7 @@
 > 
 > 
 
-####Switch 3 (O4): Convection Fan (Room Blower)
+#### Switch 3 (O4): Convection Fan (Room Blower)
 * **Function:** Blows warm air into the room.
 * **Logic:** Turned ON by the script during the run cycle.
 
@@ -48,7 +48,7 @@
 > 
 > 
 
-###Input Configuration (Sensors & Switches)> [!IMPORTANT]
+### Input Configuration (Sensors & Switches)> [!IMPORTANT]
 > **Crucial Setting:** All inputs must be set to **"Detached"** mode in the Shelly App. This separates the physical switch from the relay, allowing the script to decide how to react to the signal.
 
 * **Input 0 (S1): Stop Button**
@@ -74,21 +74,21 @@
 
 ---
 
-##3. Thermostat Logic & Feed ControlThe "heart" of the controller is the Feed Rate logic. Unlike a gas furnace that is simply On or Off, a pellet stove must run continuously but vary the size of the fire.
+## 3. Thermostat Logic & Feed ControlThe "heart" of the controller is the Feed Rate logic. Unlike a gas furnace that is simply On or Off, a pellet stove must run continuously but vary the size of the fire.
 
-###The "Pulse" PrincipleThe Auger Motor is a single-speed AC gear motor. To control the amount of fuel, we use **Duty Cycle Modulation**:
+### The "Pulse" PrincipleThe Auger Motor is a single-speed AC gear motor. To control the amount of fuel, we use **Duty Cycle Modulation**:
 
 * **ON Time:** The auger turns and drops pellets.
 * **OFF Time:** The auger sits still, allowing the pellets to burn.
 
-###Two Modes of OperationThe script switches between two distinct profiles based on the "Thermostat" state (Boolean 200).
+### Two Modes of OperationThe script switches between two distinct profiles based on the "Thermostat" state (Boolean 200).
 
-####1. Low Fire (Pilot / Idle Mode)
+#### 1. Low Fire (Pilot / Idle Mode)
 * **Trigger:** Virtual Switch 200 is `OFF` (False).
 * **Purpose:** Maintain the smallest possible fire to keep the stove active without overheating the room.
 * **Settings:** Hardcoded in the script (`LOW_ON = 3500ms`, `LOW_OFF = 4500ms`). This is the "Safety Floor."
 
-####2. High Fire (Heating Mode)
+#### 2. High Fire (Heating Mode)
 * **Trigger:** Virtual Switch 200 is `ON` (True).
 * **Purpose:** Generate maximum heat to warm the room.
 * **Settings:** User-adjustable via **Virtual Sliders**.
@@ -99,11 +99,11 @@
 
 ---
 
-##4. Virtual Component Dictionary
+## 4. Virtual Component Dictionary
 
 These are software-defined controls created inside the Shelly "Components" interface. They do not exist physically but appear on the App Dashboard.
 
-###A. Virtual Switch (Boolean)
+### A. Virtual Switch (Boolean)
 * **ID:** `boolean:200`
 * **Name:** `Thermostat` (or "Heat Demand")
 * **Function:** This is the input for your home heating needs.
@@ -112,7 +112,7 @@ These are software-defined controls created inside the Shelly "Components" inter
 
 
 
-###B. Virtual Numbers (Sliders)
+### B. Virtual Numbers (Sliders)
 * **ID:** `number:200`
 * **Name:** `High Fire ON`
 * **Range:** 1.0 – 10.0 (Seconds)
@@ -126,7 +126,7 @@ These are software-defined controls created inside the Shelly "Components" inter
 
 
 
-###C. Virtual Buttons (Triggers)
+### C. Virtual Buttons (Triggers)
 
 These are momentary "soft keys" used to send commands to the script.
 
@@ -148,7 +148,7 @@ These are momentary "soft keys" used to send commands to the script.
 
 ---
 
-##5. The "Brain": Script Version 5.0*Current Production Build as of December 2025.*
+## 5. The "Brain": Script Version 5.0
 
 **Key Features:**
 
@@ -159,7 +159,7 @@ These are momentary "soft keys" used to send commands to the script.
 
 ---
 
-##6. Quality Assurance (QA) Testing Protocol*Run these tests before using the stove for the season.*
+## 6. Quality Assurance (QA) Testing Protocol*Run these tests before using the stove for the season.*
 
 | Test | Action | Expected Result |
 | --- | --- | --- |
