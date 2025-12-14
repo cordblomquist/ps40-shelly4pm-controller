@@ -16,37 +16,35 @@
 
 ### Wiring & Output Map (Relays)
 
-#### Switch 0 (O1): Combustion Fan (Exhaust)
-* **Function:** Pulls air through the burn pot and vents smoke outside.
-* **Safety Default:** Must be configured in Shelly settings as **"Power On Default: ON"**. This ensures the fan runs immediately if the device reboots or crashes, preventing smoke buildup.
+* **Switch 0 (O1): Combustion Fan (Exhaust)**
+  * **Function:** Pulls air through the burn pot and vents smoke outside.
+  * **Safety Default:** Must be configured in Shelly settings as **"Power On Default: ON"**. This ensures the fan runs immediately if the device reboots or crashes, preventing smoke buildup.
 
-#### Switch 1 (O2): Igniter
-* **Function:** Superheats air to light the pellets during the startup phase.
-* **Logic:** Runs for the first few minutes of startup, then shuts off.
+* **Switch 1 (O2): Igniter**
+  * **Function:** Superheats air to light the pellets during the startup phase.
+  * **Logic:** Runs for the first few minutes of startup, then shuts off.
 
-#### Switch 2 (O3): Auger Motor (Fuel Feed)
-* **Function:** Feeds pellets into the burn pot.
-* **Logic:** Cycles ON and OFF (e.g., 3s ON, 5s OFF).
+* **Switch 2 (O3): Auger Motor (Fuel Feed)**
+  * **Function:** Feeds pellets into the burn pot.
+  * **Logic:** Cycles ON and OFF (e.g., 3s ON, 5s OFF).
 
-> [!WARNING]
-> **HARDWARE SAFETY INTERLOCK (INVISIBLE TO SOFTWARE)**
-> There is a **High-Temperature Limit Switch** (Snap Disc) wired physically **in-line (series)** with the Auger Motor.
-> * **Function:** If the hopper or feed tube exceeds safety limits (e.g., 200°F), this switch physically cuts power to the motor.
-> * **Note:** The software cannot "see" this switch. The Shelly Dashboard may show the Auger as "ON," but if this safety switch is tripped, the motor will not turn. This is a redundant, fail-safe layer that overrides the software.
-> 
-> 
+  > [!WARNING]
+  > **HARDWARE SAFETY INTERLOCK (INVISIBLE TO SOFTWARE)**
+  > There is a **High-Temperature Limit Switch** (Snap Disc) wired physically **in-line (series)** with the Auger Motor.
+  > * **Function:** If the hopper or feed tube exceeds safety limits (e.g., 200°F), this switch physically cuts power to the motor.
+  > * **Note:** The software cannot "see" this switch. The Shelly Dashboard may show the Auger as "ON," but if this safety switch is tripped, the motor will not turn. This is a redundant, fail-safe layer that overrides the software.
+  >
 
-#### Switch 3 (O4): Convection Fan (Room Blower)
-* **Function:** Blows warm air into the room.
-* **Logic:** Turned ON by the script during the run cycle.
+* **Switch 3 (O4): Convection Fan (Room Blower)**
+  * **Function:** Blows warm air into the room.
+  * **Logic:** Turned ON by the script during the run cycle.
 
-> [!NOTE]
-> **HARDWARE THERMAL INTERLOCK**
-> There is a **Convection Snap Disc** (Temperature Switch) wired physically **in-line (series)** with the Convection Fan.
-> * **Function:** This switch only closes when the stove body is hot (e.g., >110°F).
-> * **Note:** This prevents the fan from blowing cold air during the first few minutes of startup. The Shelly script may turn the Relay "ON" immediately, but the fan will not actually spin until the stove warms up and this analog switch closes.
-> 
-> 
+  > [!NOTE]
+  > **HARDWARE THERMAL INTERLOCK**
+  > There is a **Convection Snap Disc** (Temperature Switch) wired physically **in-line (series)** with the Convection Fan.
+  > * **Function:** This switch only closes when the stove body is hot (e.g., >110°F).
+  > * **Note:** This prevents the fan from blowing cold air during the first few minutes of startup. The Shelly script may turn the Relay "ON" immediately, but the fan will not actually spin until the stove warms up and this analog switch closes.
+  >
 
 ### Input Configuration (Sensors & Switches)> [!IMPORTANT]
 
@@ -75,7 +73,9 @@
 
 ---
 
-## 3. Thermostat Logic & Feed ControlThe "heart" of the controller is the Feed Rate logic. Unlike a gas furnace that is simply On or Off, a pellet stove must run continuously but vary the size of the fire.
+## 3. Thermostat Logic & Feed Control
+
+The "heart" of the controller is the Feed Rate logic. Unlike a gas furnace that is simply On or Off, a pellet stove must run continuously but vary the size of the fire.
 
 ### The "Pulse" Principle
 
