@@ -49,7 +49,8 @@
 > 
 
 ### Input Configuration (Sensors & Switches)> [!IMPORTANT]
-> **Crucial Setting:** All inputs must be set to **"Detached"** mode in the Shelly App. This separates the physical switch from the relay, allowing the script to decide how to react to the signal.
+
+**Crucial Setting:** All inputs must be set to **"Detached"** mode in the Shelly App. This separates the physical switch from the relay, allowing the script to decide how to react to the signal.
 
 * **Input 0 (S1): Stop Button**
   * *Type:* Momentary Button.
@@ -76,12 +77,16 @@
 
 ## 3. Thermostat Logic & Feed ControlThe "heart" of the controller is the Feed Rate logic. Unlike a gas furnace that is simply On or Off, a pellet stove must run continuously but vary the size of the fire.
 
-### The "Pulse" PrincipleThe Auger Motor is a single-speed AC gear motor. To control the amount of fuel, we use **Duty Cycle Modulation**:
+### The "Pulse" Principle
+
+The Auger Motor is a single-speed AC gear motor. To control the amount of fuel, we use **Duty Cycle Modulation**:
 
 * **ON Time:** The auger turns and drops pellets.
 * **OFF Time:** The auger sits still, allowing the pellets to burn.
 
-### Two Modes of OperationThe script switches between two distinct profiles based on the "Thermostat" state (Boolean 200).
+### Two Modes of Operation
+
+The script switches between two distinct profiles based on the "Thermostat" state (Boolean 200).
 
 #### 1. Low Fire (Pilot / Idle Mode)
 * **Trigger:** Virtual Switch 200 is `OFF` (False).
