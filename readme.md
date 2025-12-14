@@ -1,4 +1,4 @@
-#Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)
+# Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)
 
 ##1. Project Overview
 
