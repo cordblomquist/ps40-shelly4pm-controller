@@ -1,8 +1,8 @@
-// WINSLOW PS40 CONTROLLER - v12.0 (Waterfall RPC)
-// -----------------------------------------------
-// FIX: "Too many calls in progress" on boot.
-// METHOD: "Waterfall" chaining. No RPC call starts until the previous one finishes.
-// RESULT: Max concurrent calls = 1. (Limit is 5).
+// WINSLOW PS40 CONTROLLER - v12.1 (Stable / Event-Driven)
+// -------------------------------------------------------
+// ARCHITECTURE: Waterfall RPC (Serialized Calls)
+// FIX v12.1: Clears boot/purge timers when Start is pressed to prevent 
+//            shutdown 10 mins into the run.
 
 // PIN MAPPING
 let R_EXHAUST  = 0; 
@@ -35,20 +35,20 @@ let DB_FIRE   = 60 * 1000;
 let state = "IDLE";
 let subState = "";
 let isHighFire = false;
-let activeOn  = 3000;  
+let activeOn  = 3000;   
 let activeOff = 5000; 
 
 // TIMERS
 let augerTimer = null;
 let phaseTimer = null;
-let vacDebounceTimer = null;  
+let vacDebounceTimer = null;   
 let fireDebounceTimer = null; 
 
 // TELEMETRY CACHE
 let lastVac = "WAIT";    
 let lastFire = "WAIT"; 
 
-print("WINSLOW CONTROLLER v12.0: SERIALIZED RPC");
+print("WINSLOW CONTROLLER v12.1: SERIALIZED RPC");
 
 // 1. HELPER: The "Safe Switch" (Prevents RPC flooding)
 // ----------------------------------------------------
@@ -164,6 +164,11 @@ function startStartup() {
             return; 
         }
         
+        // SENSORS OK - START SEQUENCE
+        // FIX v12.1: Clear any existing purge/shutdown timers so we don't die in 10 mins
+        Timer.clear(phaseTimer);
+        Timer.clear(augerTimer);
+
         print("SENSORS OK. IGNITION SEQUENCE STARTED.");
         state = "STARTUP";
         subState = "PRIME";
@@ -273,6 +278,11 @@ Shelly.addEventHandler(function(event) {
     
     if (c === "button:" + V_BTN_FORCE) {
         print("CMD: Force Run");
+        
+        // FIX v12.1: Clear boot/purge timers on Force Run too
+        Timer.clear(phaseTimer);
+        Timer.clear(augerTimer);
+
         state = "RUNNING";
         subState = "RUN";
         setRelay(R_IGNITER, false, function() {
@@ -287,7 +297,7 @@ Shelly.addEventHandler(function(event) {
 
 // 7. BOOT SEQUENCE (Serialized)
 // -----------------------------
-// Step 1: Safe Shutdown
+// Step 1: Safe Shutdown (Sets state to PURGING and sets a timer)
 stopStove(600);
 
 // Step 2: Sync Sensors (Delayed 2s to let Shutdown finish)
