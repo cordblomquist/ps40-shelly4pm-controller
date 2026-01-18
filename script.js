@@ -1,285 +1,283 @@
-// WINSLOW PS40 CONTROLLER - v5.1 (FULL ACTIVE SYNC)
-// -------------------------------------------------
+// WINSLOW PS40 CONTROLLER - v11.0 (Event-Driven + Debounce)
+// ---------------------------------------------------------
+// FINAL ARCHITECTURE:
+// 1. OPERATION: Event-Driven (No Loops/Polling) -> Prevents Crashes.
+// 2. SAFETY:    Timer-Based Debounce -> Prevents False Positives.
+// 3. AUGER:     Precision Pulse -> Controlled High/Low Fire.
 
-// 1. PIN CONFIGURATION
-let R_EXHAUST  = 0; // O1: Combustion Fan
-let R_IGNITER  = 1; // O2: Ignitor
-let R_AUGER    = 2; // O3: Auger
-let R_CONV_FAN = 3; // O4: Convection Fan
+// PIN MAPPING
+let R_EXHAUST  = 0; 
+let R_IGNITER  = 1; 
+let R_AUGER    = 2; 
+let R_CONV_FAN = 3; 
 
-let I_STOP_BTN  = 0; // S1: Physical Stop Button
-let I_START_BTN = 1; // S2: Physical Start Button
-let I_POF_SNAP  = 2; // S3: Proof of Fire
-let I_VACUUM    = 3; // S4: Vacuum Switch
+// INPUTS
+let I_STOP_BTN  = 0; 
+let I_START_BTN = 1; 
+let I_POF_SNAP  = 2; // Proof of Fire
+let I_VACUUM    = 3; // Vacuum
 
-// VIRTUAL COMPONENT IDs
-let VN_HIGH_ON  = 200; // Slider: High Fire ON
-let VN_HIGH_OFF = 201; // Slider: High Fire OFF
-let VB_FORCE_RUN= 202; // Button: Force Run
-let VS_THERMOSTAT= 200; // Boolean: Thermostat Switch
+// VIRTUAL COMPONENTS
+let V_BTN_START = 200; 
+let V_BTN_STOP  = 201; 
+let V_BTN_FORCE = 202; 
+let VS_THERMOSTAT = 200; 
 
-// 2. TIMING PROFILES (Defaults)
-let HIGH_ON     = 4500; 
-let HIGH_OFF    = 3500;
-let LOW_ON      = 3500; 
-let LOW_OFF     = 4500; 
+// CONFIGURATION (Seconds)
+let T_PRIME  = 90;
+let T_IGNITE = 120;
+let T_RAMP   = 420;
+let T_PURGE  = 1800; // 30 min cooldown
 
-let T_PRIME_END = 90 * 1000;      
-let T_IGNITE_END= 210 * 1000;     
-let T_RUN_START = 7 * 60 * 1000; // UPDATED: 7 Minutes per your request
+// DEBOUNCE THRESHOLDS (The "Forgiveness" Time)
+let DB_VACUUM = 10 * 1000; // 10 seconds
+let DB_FIRE   = 60 * 1000; // 60 seconds
 
-let SHUTDOWN    = 30 * 60 * 1000; 
-let BOOT_PURGE  = 10 * 60 * 1000; 
+// FEED VARIABLES
+let activeOn  = 3000;  
+let activeOff = 5000; 
 
-// STATE VARIABLES
-let state = "IDLE"; 
-let subState = ""; 
-let activeOnTime = 0;
-let activeOffTime = 0;
-let isHighFire = false; 
+// STATE
+let state = "IDLE";
+let subState = "";
+let isHighFire = false;
 
 // TIMERS
-let shutdownTimer = null;
-let startupTimer = null;
-let safetyTimer = null;
-let fireDebounceTimer = null;   
-let vacuumDebounceTimer = null; 
+let augerTimer = null;
+let phaseTimer = null;
+let vacDebounceTimer = null;  // NEW: "Doom Timer" for Vacuum
+let fireDebounceTimer = null; // NEW: "Doom Timer" for Fire
 
-print("Winslow Controller: READY v5.1 (Thermostat Sync Fix)");
+// TELEMETRY CACHE
+let lastVac = "OK";    
+let lastFire = "COLD"; 
 
-// 3. LOGIC FUNCTIONS
-// ------------------
+print("WINSLOW CONTROLLER v11.0: DEBOUNCE ENABLED");
 
-function updateFeedRate() {
+// 1. FEED LOGIC
+// -------------
+
+function updateFeedParams() {
     if (isHighFire) {
-        activeOnTime = HIGH_ON;
-        activeOffTime = HIGH_OFF;
+        activeOn  = 4500; 
+        activeOff = 3500;
     } else {
-        activeOnTime = LOW_ON;
-        activeOffTime = LOW_OFF;
+        activeOn  = 3000;
+        activeOff = 5000;
     }
-}
-
-function startPurgeMode(time) {
-    print("Mode: PURGING / COOLING");
-    state = "PURGING";
-    subState = "";
-    
-    Shelly.call("Switch.Set", { id: R_AUGER,    on: false });
-    Shelly.call("Switch.Set", { id: R_IGNITER,  on: false });
-    Shelly.call("Switch.Set", { id: R_EXHAUST,  on: true });
-    Shelly.call("Switch.Set", { id: R_CONV_FAN, on: true }); 
-    
-    Timer.clear(shutdownTimer);
-    Timer.clear(startupTimer);
-    Timer.clear(safetyTimer);
-    Timer.clear(fireDebounceTimer); 
-    Timer.clear(vacuumDebounceTimer);
-    
-    shutdownTimer = Timer.set(time, false, function() {
-        print("Purge Complete. All Systems OFF.");
-        Shelly.call("Switch.Set", { id: R_EXHAUST,  on: false });
-        Shelly.call("Switch.Set", { id: R_CONV_FAN, on: false }); 
-        state = "IDLE";
-    });
 }
 
 function runAugerCycle() {
-    if (subState !== "RAMP" && state !== "RUNNING") {
+    if (state !== "RUNNING" && subState !== "PRIME" && subState !== "RAMP") {
         Shelly.call("Switch.Set", { id: R_AUGER, on: false });
-        return;
+        return; 
     }
-    
+
     Shelly.call("Switch.Set", { id: R_AUGER, on: true });
-    
-    Timer.set(activeOnTime, false, function() {
-        Shelly.call("Switch.Set", { id: R_AUGER, on: false });
-        
-        if (subState === "RAMP" || state === "RUNNING") {
-             Timer.set(activeOffTime, false, function() { runAugerCycle(); });
-        }
-    });
-}
 
-function triggerShutdown(reason) {
-    print("SHUTDOWN Triggered: " + reason);
-    startPurgeMode(SHUTDOWN);
-}
-
-function checkRunTransition() {
-    Shelly.call("Input.GetStatus", { id: I_POF_SNAP }, function(res) {
-        if (res && res.state) {
-            print("Phase 4: RUN MODE REACHED");
-            state = "RUNNING";
-            subState = "RUN";
-            Shelly.call("Switch.Set", { id: R_IGNITER, on: false });
-            updateFeedRate();
-        } else {
-            triggerShutdown("Startup Failed: No Fire Detected.");
-        }
-    });
-}
-
-function jumpToRunMode() {
-    print("FORCE RUN: Entering Run Mode immediately. (Igniter DISABLED)");
-    
-    Timer.clear(shutdownTimer);
-    Timer.clear(startupTimer);
-    Timer.clear(safetyTimer); 
-    
-    state = "RUNNING";
-    subState = "RUN";
-    
-    Shelly.call("Switch.Set", { id: R_EXHAUST,  on: true });
-    Shelly.call("Switch.Set", { id: R_CONV_FAN, on: true });
-    Shelly.call("Switch.Set", { id: R_IGNITER,  on: false });
-    
-    Shelly.call("Boolean.GetStatus", { id: VS_THERMOSTAT }, function(res) {
-        if (res && typeof res.value !== 'undefined') { isHighFire = res.value; }
-        updateFeedRate();
-        runAugerCycle();
-    });
-}
-
-function startColdSequence() {
-    print("STARTUP: Beginning Standard Sequence.");
-    
-    Timer.clear(shutdownTimer);
-    Timer.clear(safetyTimer);
-    
-    state = "STARTUP";
-    subState = "PRIME";
-    
-    Shelly.call("Switch.Set", { id: R_EXHAUST,  on: true });
-    Shelly.call("Switch.Set", { id: R_CONV_FAN, on: true });
-    Shelly.call("Switch.Set", { id: R_IGNITER,  on: true });
-    
-    print("Phase 1: PRIME (Feed for 90s)");
-    Shelly.call("Switch.Set", { id: R_AUGER, on: true }); 
-
-    startupTimer = Timer.set(T_PRIME_END, false, function() {
-        print("Phase 2: WAIT (Igniting...)");
-        subState = "WAIT";
+    augerTimer = Timer.set(activeOn, false, function() {
         Shelly.call("Switch.Set", { id: R_AUGER, on: false });
 
-        startupTimer = Timer.set(T_IGNITE_END - T_PRIME_END, false, function() {
-            print("Phase 3: RAMP UP");
-            subState = "RAMP";
-            activeOnTime = HIGH_ON; 
-            activeOffTime = HIGH_OFF;
-            runAugerCycle(); 
-
-            startupTimer = Timer.set(T_RUN_START - T_IGNITE_END, false, function() {
-                checkRunTransition();
+        if (state === "RUNNING" || subState === "PRIME" || subState === "RAMP") {
+            augerTimer = Timer.set(activeOff, false, function() {
+                runAugerCycle(); 
             });
-        });
+        }
     });
 }
 
-// 4. EVENT HANDLERS
-// -----------------
-Shelly.addEventHandler(function(event) {
-    function isActive(info) { return (info.state === true) || (info.event === "single_push"); }
+// 2. CORE COMMANDS
+// ----------------
 
-    if (event.component === "input:" + I_START_BTN) {
-        if (isActive(event.info)) startColdSequence();
-    }
-    if (event.component === "input:" + I_STOP_BTN) {
-        if (isActive(event.info)) triggerShutdown("Manual Stop");
-    }
-
-    if (event.component === "input:" + I_VACUUM && typeof event.info.state !== 'undefined') {
-        if (!event.info.state && (state === "STARTUP" || state === "RUNNING")) {
-            if (!vacuumDebounceTimer) {
-                print("WARNING: Vacuum Lost. Waiting 10s...");
-                vacuumDebounceTimer = Timer.set(10000, false, function() {
-                    triggerShutdown("Vacuum Fail (Confirmed)");
-                });
-            }
-        } else if (event.info.state && vacuumDebounceTimer) {
-            print("Vacuum Recovered.");
-            Timer.clear(vacuumDebounceTimer); vacuumDebounceTimer = null;
-        }
-    }
+function stopStove(purgeDuration) {
+    print("!!! STOPPING STOVE !!!");
+    state = "PURGING"; 
+    subState = "COOLING";
     
-    if (event.component === "input:" + I_POF_SNAP && typeof event.info.state !== 'undefined') {
-        if (!event.info.state && state === "RUNNING") {
-            if (!fireDebounceTimer) {
-                print("WARNING: Fire Sensor Open. Waiting 60s...");
-                fireDebounceTimer = Timer.set(60000, false, function() {
-                    triggerShutdown("Fire Out (Confirmed)");
-                });
-            }
-        } else if (event.info.state && state === "RUNNING" && fireDebounceTimer) {
-            print("Fire Sensor Recovered.");
-            Timer.clear(fireDebounceTimer); fireDebounceTimer = null;
-        }
-    }
-
-    // Keep Event Handler for "Instant" reaction, but rely on Loop for certainty
-    if (event.name === "NotifyStatus" && event.component === "boolean:" + VS_THERMOSTAT) {
-        let newVal = event.info.value;
-        if (typeof newVal !== 'undefined') {
-            isHighFire = newVal;
-            updateFeedRate();
-        }
-    }
-
-    if (event.info.event === "single_push") {
-        if (event.component === "button:200") { 
-            if (state === "IDLE" || state === "PURGING") startColdSequence(); 
-        }
-        if (event.component === "button:201") { 
-            triggerShutdown("App Stop Command"); 
-        }
-        if (event.component === "button:" + VB_FORCE_RUN) {
-            print(">>> FORCE RUN BUTTON PRESSED");
-            jumpToRunMode();
-        }
-    }
-});
-
-// 5. EXECUTION START
-// ------------------
-startPurgeMode(BOOT_PURGE);
-
-Timer.set(3000, false, function() {
-    print("Boot Safety Configured. POWER RESTORED. Running 10min Safety Purge.");
-});
-
-// 6. SYNC & STATUS LOOP (Every 10 Seconds)
-// ----------------------------------------
-Timer.set(10000, true, function() {
+    // KILL ALL TIMERS IMMEDIATELY
+    Timer.clear(augerTimer);
+    Timer.clear(phaseTimer);
+    Timer.clear(vacDebounceTimer);  // Stop checking vacuum
+    Timer.clear(fireDebounceTimer); // Stop checking fire
     
-    // A. SYNC SLIDERS
-    Shelly.call("Number.GetStatus", { id: VN_HIGH_ON }, function(res1) {
-        if (res1 && res1.value) { HIGH_ON = res1.value * 1000; }
+    Shelly.call("Switch.Set", { id: R_AUGER,   on: false });
+    Shelly.call("Switch.Set", { id: R_IGNITER, on: false });
+    Shelly.call("Switch.Set", { id: R_EXHAUST, on: true });
+    Shelly.call("Switch.Set", { id: R_CONV_FAN,on: true });
+    
+    phaseTimer = Timer.set(purgeDuration * 1000, false, function() {
+        print("Purge Complete. System IDLE.");
+        state = "IDLE";
+        subState = "";
+        Shelly.call("Switch.Set", { id: R_EXHAUST, on: false });
+        Shelly.call("Switch.Set", { id: R_CONV_FAN, on: false });
+    });
+}
+
+function startStartup() {
+    if (state !== "IDLE" && state !== "PURGING") return;
+    print("CMD: Start Received. Checking Sensors...");
+    
+    // PRE-FLIGHT: We check instant status here. 
+    // If it's ALREADY open, we don't debounce, we just refuse to start.
+    Shelly.call("Input.GetStatus", { id: I_VACUUM }, function(res) {
+        if (res && !res.state) {
+            print("FAILURE: Vacuum is OPEN. Cannot Start.");
+            lastVac = "OPEN";
+            return; 
+        }
         
-        Shelly.call("Number.GetStatus", { id: VN_HIGH_OFF }, function(res2) {
-            if (res2 && res2.value) { HIGH_OFF = res2.value * 1000; }
+        print("SENSORS OK. IGNITION SEQUENCE STARTED.");
+        state = "STARTUP";
+        subState = "PRIME";
+        lastVac = "OK";
+        
+        Shelly.call("Switch.Set", { id: R_EXHAUST,  on: true });
+        Shelly.call("Switch.Set", { id: R_CONV_FAN, on: true });
+        Shelly.call("Switch.Set", { id: R_IGNITER,  on: true });
+        
+        updateFeedParams();
+        runAugerCycle();
+        
+        // TIMING CHAIN
+        phaseTimer = Timer.set(T_PRIME * 1000, false, function() {
+            print(">>> PHASE: WAIT (No Feed)");
+            subState = "WAIT";
+            Shelly.call("Switch.Set", { id: R_AUGER, on: false });
+            Timer.clear(augerTimer); 
             
-            // B. SYNC THERMOSTAT SWITCH (The Fix)
-            Shelly.call("Boolean.GetStatus", { id: VS_THERMOSTAT }, function(res3) {
-                if (res3 && typeof res3.value !== 'undefined') { 
-                    isHighFire = res3.value; 
-                }
-
-                // C. UPDATE FEED & PRINT
-                updateFeedRate();
-
-                Shelly.call("Input.GetStatus", { id: I_POF_SNAP }, function(pof) {
-                    Shelly.call("Input.GetStatus", { id: I_VACUUM }, function(vac) {
-                        
-                        let fireStatus = (pof && pof.state) ? "HOT" : "COLD";
-                        let vacStatus = (vac && vac.state) ? "OK" : "LOST";
-                        let mode = isHighFire ? "HIGH" : "LOW";
-                        let onSec = activeOnTime / 1000;
-                        let offSec = activeOffTime / 1000;
-                        
-                        print("--- STATUS: " + state + " (" + subState + ") | Fire: " + fireStatus + " | Vac: " + vacStatus + " | T-Stat: " + mode + " | Feed: " + onSec + "s/" + offSec + "s ---");
+            phaseTimer = Timer.set(T_IGNITE * 1000, false, function() {
+                print(">>> PHASE: RAMP (Feed Resumed)");
+                subState = "RAMP";
+                runAugerCycle(); 
+                
+                phaseTimer = Timer.set(T_RAMP * 1000, false, function() {
+                    // END OF RAMP - FINAL FIRE CHECK
+                    Shelly.call("Input.GetStatus", { id: I_POF_SNAP }, function(res) {
+                        if (res && res.state) {
+                            print("SUCCESS: Fire Detected. RUNNING.");
+                            state = "RUNNING";
+                            subState = "RUN";
+                            lastFire = "HOT";
+                            Shelly.call("Switch.Set", { id: R_IGNITER, on: false });
+                        } else {
+                            print("FAILURE: No Fire. Shutting Down.");
+                            lastFire = "COLD";
+                            stopStove(T_PURGE);
+                        }
                     });
                 });
             });
         });
     });
+}
+
+// 3. STATUS HANDLER (DEBOUNCED SAFETY)
+// ------------------------------------
+Shelly.addStatusHandler(function(status) {
+    
+    // --- VACUUM LOGIC ---
+    if (status.component === "input:" + I_VACUUM) {
+        
+        // Case 1: Vacuum LOST (Switch Opens)
+        if (status.delta.state === false) { 
+            print("ALERT: Vacuum Signal Lost! Starting 10s Debounce...");
+            lastVac = "UNSTABLE";
+            
+            // Start the "Doom Timer"
+            // If this timer finishes, we shut down.
+            vacDebounceTimer = Timer.set(DB_VACUUM, false, function() {
+                print("SAFETY TRIP: Vacuum lost for > 10s. SHUTDOWN.");
+                lastVac = "OPEN";
+                stopStove(T_PURGE);
+            });
+        
+        // Case 2: Vacuum RECOVERED (Switch Closes)
+        } else if (status.delta.state === true) {
+            // Cancel the Doom Timer immediately
+            if (vacDebounceTimer) {
+                print("INFO: Vacuum Signal Recovered.");
+                Timer.clear(vacDebounceTimer);
+                vacDebounceTimer = null;
+            }
+            lastVac = "OK";
+        }
+    }
+
+    // --- PROOF OF FIRE LOGIC ---
+    if (status.component === "input:" + I_POF_SNAP) {
+        
+        // Case 1: Fire LOST (Switch Opens) - Only matters in RUN mode
+        if (state === "RUNNING" && status.delta.state === false) {
+             print("ALERT: Fire Signal Lost! Starting 60s Debounce...");
+             lastFire = "UNSTABLE";
+             
+             fireDebounceTimer = Timer.set(DB_FIRE, false, function() {
+                 print("SAFETY TRIP: Fire lost for > 60s. SHUTDOWN.");
+                 lastFire = "COLD";
+                 stopStove(T_PURGE);
+             });
+        }
+        
+        // Case 2: Fire RECOVERED
+        else if (state === "RUNNING" && status.delta.state === true) {
+             if (fireDebounceTimer) {
+                 print("INFO: Fire Signal Recovered.");
+                 Timer.clear(fireDebounceTimer);
+                 fireDebounceTimer = null;
+             }
+             lastFire = "HOT";
+        }
+
+        // Case 3: Early Ignition (Startup Shortcut)
+        else if (state === "STARTUP" && subState === "RAMP" && status.delta.state === true) {
+             print("SUCCESS: Fire Detected Early!");
+             state = "RUNNING";
+             subState = "RUN";
+             lastFire = "HOT";
+             Shelly.call("Switch.Set", { id: R_IGNITER, on: false });
+             Timer.clear(phaseTimer); // Cancel startup timeout
+        }
+    }
+    
+    // --- THERMOSTAT ---
+    if (status.component === "boolean:" + VS_THERMOSTAT) {
+        isHighFire = status.delta.value;
+        updateFeedParams();
+        print("SETTINGS: Heat changed to " + (isHighFire ? "HIGH" : "LOW"));
+    }
 });
+
+// 4. EVENT HANDLER (BUTTONS)
+// --------------------------
+Shelly.addEventHandler(function(event) {
+    let isPush = (event.info.event === "single_push" || event.info.event === "btn_down");
+    let c = event.component;
+    if (!isPush) return;
+
+    if (c === "input:" + I_START_BTN) startStartup();
+    if (c === "input:" + I_STOP_BTN)  stopStove(T_PURGE);
+    if (c === "button:" + V_BTN_START) startStartup();
+    if (c === "button:" + V_BTN_STOP)  stopStove(T_PURGE);
+    
+    if (c === "button:" + V_BTN_FORCE) {
+        print("CMD: Force Run");
+        state = "RUNNING";
+        subState = "RUN";
+        Shelly.call("Switch.Set", { id: R_IGNITER, on: false });
+        Shelly.call("Switch.Set", { id: R_EXHAUST, on: true });
+        Shelly.call("Switch.Set", { id: R_CONV_FAN,on: true });
+        runAugerCycle();
+    }
+});
+
+// 5. HEARTBEAT
+// ------------
+Timer.set(30000, true, function() {
+    let mode = isHighFire ? "HIGH" : "LOW";
+    print("HEARTBEAT: " + state + " (" + subState + ") | Heat: " + mode + 
+          " | Vac: " + lastVac + " | Fire: " + lastFire);
+});
+
+// 6. BOOT
+stopStove(600);
