@@ -1,17 +1,26 @@
 # Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)
 
-**Current Version:** v12.0 (Stable / Event-Driven)
+**Current Version:** v12.1 (Stable)  
+**Hardware:** Shelly Pro 4PM  
+**Language:** Shelly mJS (Micro-JavaScript)
 
-This project replaces the obsolete or failing factory control board of a **Winslow PS40 Pellet Stove** (also known as Lennox/IronStrike/Country Stoves) with a **Shelly Pro 4PM** smart relay running custom firmware logic.
+## Project Overview
+This project replaces the legacy/obsolete control board of a **Winslow PS40 Pellet Stove** (also known as Lennox or Country Stoves) with a modern, Wi-Fi-enabled **Shelly Pro 4PM** smart relay.
 
-It converts the stove into a fully modern, Wi-Fi-connected IoT appliance while maintaining (and improving) the original safety interlocks.
+The controller manages the entire combustion cycle using a **Finite State Machine (FSM)**, handling ignition, fuel feed modulation, convection blowers, and safety shutdowns. It features a "Waterfall RPC" architecture to prevent network congestion on the Shelly device.
+
+## 🚨 Safety Warning
+**DANGER:** This software controls fire and high-voltage components. 
+- **DO NOT** use this software if you are not comfortable working with high-voltage electricity and combustion appliances.
+- **ALWAYS** maintain physical safety interlocks (High-Limit Snap Disc, Vacuum Switch) wired in series where appropriate, or as independent inputs.
+- The software includes safety timeouts, but **hardware failsafes are mandatory**.
+- Use at your own risk. The author assumes no liability for damage or injury.
 
 ---
 
-## ⚠️ Safety Warning
-**This software controls fire.** While this script includes multiple layers of safety logic (Debounce, Pre-Flight Checks, Auto-Shutdown), you are responsible for ensuring your hardware wiring is correct. 
-* **NEVER** bypass the factory High-Limit Snap Disc (Overheat Sensor). This must be wired physically in series with the Auger motor.
-* **ALWAYS** test the Vacuum and Proof-of-Fire safety stops immediately after installation.
+## v12.1 Changelog (Latest)
+* **FIXED: The "Phantom Shutdown" Bug.** * *Issue:* In v12.0, the safety shutdown timer (`stopStove(600)`) initiated at boot would persist even after the user pressed "Start." This caused the stove to seemingly randomly shut down exactly 10 minutes after the device booted, regardless of the fire state.
+    * *Fix:* The `startStartup()` sequence and `Force Run` event now explicitly call `Timer.clear()` on the global purge timer to ensure no background countdowns remain active during a burn.
 
 ---
 
@@ -19,72 +28,70 @@ It converts the stove into a fully modern, Wi-Fi-connected IoT appliance while m
 
 ### Wiring Map (Shelly Pro 4PM)
 
-| Channel | Component | Function |
-| :--- | :--- | :--- |
-| **Output 0** | **Combustion Fan** | Exhaust / Draft (Vents smoke) |
-| **Output 1** | **Igniter** | Electric heating element |
-| **Output 2** | **Auger Motor** | Fuel feed system |
-| **Output 3** | **Convection Fan** | Room blower (Heat distribution) |
-
-| Input | Component | Type |
-| :--- | :--- | :--- |
-| **Input 0** | **Stop Button** | Momentary Push Button |
-| **Input 1** | **Start Button** | Momentary Push Button |
-| **Input 2** | **Proof of Fire** | Snap Disc (Low Limit) |
-| **Input 3** | **Vacuum Switch** | Pressure safety switch |
-
-### Shelly Settings
-1.  **Input Mode:** Set all inputs to **"Button"** mode in the Shelly Web UI.
-2.  **Power On Default:** Set Output 0 (Combustion Fan) to **"ON"**. This ensures that if the Shelly reboots unexpectedly, the fan runs to clear smoke.
-
----
-
-## Software Installation
-
-1.  Open your Shelly Pro 4PM Web Interface IP.
-2.  Navigate to **Scripts** -> **Add Script**.
-3.  Name it `Winslow-Controller-v12`.
-4.  Paste the content of `script.js`.
-5.  **Save** and **Start** the script.
-6.  Enable **"Run on startup"**.
-
----
-
-## Virtual Components (Web UI Control)
-
-To control the stove from your phone/browser, you must create these "Virtual Components" in the Shelly interface. The script links to them by ID.
-
-| Type | ID | Name | Function |
+| Channel | Component | Function | Notes |
 | :--- | :--- | :--- | :--- |
-| **Boolean** | `200` | **Thermostat** | Toggle ON for High Fire, OFF for Low Fire. |
-| **Button** | `200` | **Virtual Start** | Triggers the startup sequence. |
-| **Button** | `201` | **Virtual Stop** | Triggers the shutdown/purge sequence. |
-| **Button** | `202` | **Force Run** | **Advanced:** Bypasses ignition. Goes straight to "Run" mode. |
+| **Output 0** | Exhaust Fan | Vents smoke/fumes | Default ON state recommended for safety. |
+| **Output 1** | Igniter | Heats pellets for start | Active only during `PRIME` and `IGNITE` phases. |
+| **Output 2** | Auger Motor | Feeds fuel | PWM-style duty cycle (e.g., 3s ON / 5s OFF). |
+| **Output 3** | Convection Fan | Room air blower | Activates after ignition to distribute heat. |
+
+### Inputs (Add-on / Switch Terminals)
+
+| Input ID | Component | Type | Function |
+| :--- | :--- | :--- | :--- |
+| **Input 0** | STOP Button | Momentary (Push) | Triggers `stopStove()` (Purge Mode). |
+| **Input 1** | START Button | Momentary (Push) | Triggers `startStartup()` sequence. |
+| **Input 2** | POF Snap Disc | Toggle (Switch) | **Proof of Fire.** Closed = Hot, Open = Cold. |
+| **Input 3** | Vacuum Switch | Toggle (Switch) | Safety pressure sensor. Must be Closed to run. |
 
 ---
 
-## Operating Logic (v12.0)
+## Software Features
 
-### 1. The "Waterfall" (Crash Prevention)
-Unlike standard scripts that fire all commands at once (crashing the Shelly), this controller uses **Serialized Execution**.
-* *Example:* When stopping, it turns off the Auger -> waits for confirmation -> turns off Igniter -> waits -> turns on Exhaust.
-* This ensures the script never hits the Shelly Gen2 limit of **5 Concurrent RPC Calls**.
+### 1. Waterfall RPC Architecture
+The Shelly Pro 4PM has a limit of 5 concurrent RPC calls. To prevent "Too Many Calls" errors during complex state changes (like startup or shutdown), this script uses a **Waterfall** approach. 
+- Relays are toggled one by one in a serialized chain (Callback Hell style).
+- Ensure Relay A is confirmed ON before attempting to turn Relay B ON.
 
-### 2. Event-Driven & Debounced
-The script does not "poll" (ask) the sensors. It sleeps until a sensor physically changes state.
-* **Vacuum Safety:** If the pressure switch opens (vibration/wind), the script waits **10 seconds** ("Forgiveness Time") before shutting down. This prevents false alarms.
-* **Fire Safety:** If the fire goes out while running, the script waits **60 seconds** to allow for temporary fuel gaps before shutting down.
+### 2. Finite State Machine
+The stove operates in distinct states:
+- **IDLE:** Waiting for command.
+- **STARTUP:**
+    - `PRIME`: Load initial pellets.
+    - `WAIT`: Pause feed to build ember bed.
+    - `IGNITE`: Igniter ON, Feed ON (Ramp).
+    - `RAMP`: Wait for Proof of Fire (POF) snap disc to close.
+- **RUNNING:** Normal operation. Auger cycles based on heat settings.
+- **PURGING:** Cool-down cycle. Fans run for 30 minutes (or custom time) to burn off fuel.
 
-### 3. Startup Sequence
-1.  **Pre-Flight:** Checks if Vacuum is closed. If Open, aborts immediately.
-2.  **Prime (90s):** Fans ON, Igniter ON, Auger feeds pellets to fill the pot.
-3.  **Wait (120s):** Auger stops. Igniter stays ON to light the pellets.
-4.  **Ramp (420s):** Auger resumes feeding.
-5.  **Verification:** At the end of Ramp, checks Proof of Fire.
-    * **Hot?** Enters `RUNNING` mode. Igniter OFF.
-    * **Cold?** Enters `PURGING` mode (Shutdown).
+### 3. Event-Driven Safety
+Instead of polling the hardware constantly, the script listens for events:
+- **Vacuum Loss:** If the vacuum switch opens for >10 seconds, the stove performs an emergency shutdown.
+- **Fire Loss:** If the POF switch opens during a run for >60 seconds, the stove shuts down.
 
-### 4. Telemetry (Console)
-Check the Script Console for a "Heartbeat" message every 30 seconds:
-```text
-HEARTBEAT: RUNNING (RUN) | Heat: LOW | Vac: OK | Fire: HOT
+---
+
+## Installation
+
+1.  **Mount:** Install the Shelly Pro 4PM on a DIN rail.
+2.  **Wire:** Connect components according to the wiring map above.
+3.  **Config:**
+    * Set **Input 0** & **Input 1** to `Button` mode.
+    * Set **Input 2** & **Input 3** to `Switch` mode.
+4.  **Script:**
+    * Open the Shelly Web Interface (IP address in browser).
+    * Go to **Scripts** > **Add Script**.
+    * Paste the content of `script.js` from this repo.
+    * **Enable** the script and click **Start**.
+
+## Virtual Components (Optional)
+The script supports Shelly Virtual Components for UI control:
+- `Boolean:200`: Virtual Thermostat (High/Low Fire).
+- `Button:200`: Virtual Start.
+- `Button:201`: Virtual Stop.
+- `Button:202`: Force Run (Bypass Ignition).
+
+---
+
+## License
+MIT License. Free to use, modify, and distribute.
