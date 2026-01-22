@@ -220,6 +220,11 @@ function startStartup() {
 // ------------------
 Shelly.addStatusHandler(function(status) {
     if (status.component === "input:" + I_VACUUM) {
+        // FIX START: Guard Clause to prevent "Death Spiral"
+        // If the stove is IDLE (Off), ignore vacuum loss signal.
+        if (state === "IDLE" && status.delta.state === false) return;
+        // FIX END
+
         if (status.delta.state === false) { 
             print("ALERT: Vacuum Lost! Debouncing...");
             lastVac = "UNSTABLE";
@@ -265,33 +270,6 @@ Shelly.addStatusHandler(function(status) {
         isHighFire = status.delta.value;
         updateFeedParams();
         print("SETTINGS: Heat " + (isHighFire ? "HIGH" : "LOW"));
-    }
-});
-
-Shelly.addEventHandler(function(event) {
-    let isPush = (event.info.event === "single_push" || event.info.event === "btn_down");
-    let c = event.component;
-    if (!isPush) return;
-
-    if (c === "input:" + I_START_BTN || c === "button:" + V_BTN_START) startStartup();
-    if (c === "input:" + I_STOP_BTN  || c === "button:" + V_BTN_STOP)  stopStove(T_PURGE);
-    
-    if (c === "button:" + V_BTN_FORCE) {
-        print("CMD: Force Run");
-        
-        // FIX v12.1: Clear boot/purge timers on Force Run too
-        Timer.clear(phaseTimer);
-        Timer.clear(augerTimer);
-
-        state = "RUNNING";
-        subState = "RUN";
-        setRelay(R_IGNITER, false, function() {
-            setRelay(R_EXHAUST, true, function() {
-                setRelay(R_CONV_FAN, true, function() {
-                    runAugerCycle();
-                });
-            });
-        });
     }
 });
 
