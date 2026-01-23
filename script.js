@@ -1,4 +1,4 @@
-// WINSLOW PS40 CONTROLLER - v12.1 (Stable / Event-Driven)
+// WINSLOW PS40 CONTROLLER - v12.2 (Stable / Event-Driven)
 // -------------------------------------------------------
 // ARCHITECTURE: Waterfall RPC (Serialized Calls)
 // FIX v12.1: Clears boot/purge timers when Start is pressed to prevent 
@@ -270,6 +270,44 @@ Shelly.addStatusHandler(function(status) {
         isHighFire = status.delta.value;
         updateFeedParams();
         print("SETTINGS: Heat " + (isHighFire ? "HIGH" : "LOW"));
+    }
+});
+
+// RESTORED BUTTON LISTENER
+Shelly.addEventHandler(function(event) {
+    let isPush = (event.info.event === "single_push" || event.info.event === "btn_down");
+    let c = event.component;
+    if (!isPush) return;
+
+    // Check for Start Button (Physical or Virtual)
+    if (c === "input:" + I_START_BTN || c === "button:" + V_BTN_START) {
+        startStartup();
+    }
+    
+    // Check for Stop Button (Physical or Virtual)
+    if (c === "input:" + I_STOP_BTN  || c === "button:" + V_BTN_STOP) {
+        stopStove(T_PURGE);
+    }
+    
+    // Check for Force Run (Virtual Only)
+    if (c === "button:" + V_BTN_FORCE) {
+        print("CMD: Force Run");
+        
+        // Clear timers to prevent phantom shutdown
+        Timer.clear(phaseTimer);
+        Timer.clear(augerTimer);
+
+        state = "RUNNING";
+        subState = "RUN";
+        
+        // Force Waterfall Start
+        setRelay(R_IGNITER, false, function() {
+            setRelay(R_EXHAUST, true, function() {
+                setRelay(R_CONV_FAN, true, function() {
+                    runAugerCycle();
+                });
+            });
+        });
     }
 });
 
