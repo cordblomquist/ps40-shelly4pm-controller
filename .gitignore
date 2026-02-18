@@ -1,0 +1,6 @@
+# Local reference documents (not part of the deployed script)
+PELLET_STOVE_CONTROLLER_GUIDE.md
+*.pdf
+
+# Cursor project config
+.cursor/
