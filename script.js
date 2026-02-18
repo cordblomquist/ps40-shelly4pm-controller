@@ -1,5 +1,5 @@
-// WINSLOW PS40 CONTROLLER - v13.1 (Vacuum Pre-Flight Fix)
-// --------------------------------------------------------
+// WINSLOW PS40 CONTROLLER - v13.2 (Purge-Safe Vacuum Failure)
+// ------------------------------------------------------------
 // ARCHITECTURE: Waterfall RPC (Serialized Calls), Event-Driven
 // v12.1 FIX: Clears boot/purge timers on Start to prevent phantom shutdown.
 // v13.0 NEW: Room thermostat auto-control via Shelly H&T Gen3.
@@ -7,6 +7,9 @@
 // v13.1 FIX: Start exhaust fan before vacuum check so negative pressure can
 //            establish. Fixes "Vacuum OPEN" failure on cold start and STANDBY
 //            auto-restart (vacuum switch requires airflow to close).
+// v13.2 FIX: On vacuum failure during a start-from-PURGE, resume purge instead
+//            of going to IDLE. Keeps exhaust fan running when residual fire is
+//            possible and prevents orphaned convection fan.
 
 // PIN MAPPING
 let R_EXHAUST  = 0; 
@@ -67,7 +70,7 @@ let lowFireTimer = null;       // 30-min LOW fire countdown before thermostat sh
 let lastVac = "WAIT";    
 let lastFire = "WAIT"; 
 
-print("WINSLOW CONTROLLER v13.1: THERMOSTAT AUTO-CONTROL");
+print("WINSLOW CONTROLLER v13.2: THERMOSTAT AUTO-CONTROL");
 
 // 1. HELPER: The "Safe Switch" (Prevents RPC flooding)
 // ----------------------------------------------------
@@ -285,6 +288,11 @@ function startStartup() {
     if (state !== "IDLE" && state !== "PURGING") return;
     print("CMD: Start Received.");
     
+    // FIX v13.2: Remember if we're interrupting a purge. On vacuum failure,
+    // we must resume the purge (fans stay on) rather than going to IDLE,
+    // because there may be residual fire that needs venting.
+    let wasPurging = (state === "PURGING");
+
     // FIX v12.1: Clear any existing purge/shutdown timers so we don't die in 10 mins
     Timer.clear(phaseTimer);
     Timer.clear(augerTimer);
@@ -298,11 +306,18 @@ function startStartup() {
         phaseTimer = Timer.set(T_VAC_SETTLE * 1000, false, function() {
             Shelly.call("Input.GetStatus", { id: I_VACUUM }, function(res) {
                 if (res && !res.state) {
-                    print("FAILURE: Vacuum OPEN. Cannot Start. Exhaust OFF.");
                     lastVac = "OPEN";
-                    setRelay(R_EXHAUST, false);
-                    state = "IDLE";
-                    subState = "";
+                    if (wasPurging) {
+                        // Residual fire possible — keep fans running, resume a clean purge
+                        print("FAILURE: Vacuum OPEN. Cannot Start. Resuming purge.");
+                        stopStove(T_PURGE, false);
+                    } else {
+                        // Cold start from IDLE/STANDBY — safe to turn off exhaust
+                        print("FAILURE: Vacuum OPEN. Cannot Start. Exhaust OFF.");
+                        setRelay(R_EXHAUST, false);
+                        state = "IDLE";
+                        subState = "";
+                    }
                     return; 
                 }
                 

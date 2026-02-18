@@ -1,6 +1,6 @@
 # Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)
 
-**Current Version:** v13.1 (Stable)  
+**Current Version:** v13.2 (Stable)  
 **Hardware:** Shelly Pro 4PM  
 **Language:** Shelly mJS (Micro-JavaScript)
 
@@ -19,6 +19,11 @@ The controller manages the entire combustion cycle using a **Finite State Machin
 ---
 
 ## Changelog
+
+### v13.2 — Purge-Safe Vacuum Failure
+* **FIXED: Exhaust fan cut and orphaned convection fan on failed start-from-purge.**
+    * *Issue:* If `startStartup()` was called during a purge and vacuum failed, the exhaust fan was turned off (unsafe — residual fire needs venting) and the convection fan was left running with no cleanup timer.
+    * *Fix:* On vacuum failure from PURGING state, `stopStove()` is called to resume a clean purge with both fans running. Cold-start failure (from IDLE/STANDBY) behavior is unchanged.
 
 ### v13.1 — Vacuum Pre-Flight Fix
 * **FIXED: "Vacuum OPEN. Cannot Start." on cold start and STANDBY auto-restart.**
