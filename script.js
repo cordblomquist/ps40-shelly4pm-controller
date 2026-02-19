@@ -1,5 +1,5 @@
-// WINSLOW PS40 CONTROLLER - v13.3 (Cloud-Tunable Feed Rates)
-// ------------------------------------------------------------
+// WINSLOW PS40 CONTROLLER - v14.0 (Proportional Temperature Control)
+// -------------------------------------------------------------------
 // ARCHITECTURE: Waterfall RPC (Serialized Calls), Event-Driven
 // v12.1 FIX: Clears boot/purge timers on Start to prevent phantom shutdown.
 // v13.0 NEW: Room thermostat auto-control via Shelly H&T Gen3.
@@ -10,8 +10,10 @@
 // v13.2 FIX: On vacuum failure during a start-from-PURGE, resume purge instead
 //            of going to IDLE. Keeps exhaust fan running when residual fire is
 //            possible and prevents orphaned convection fan.
-// v13.3 NEW: HIGH fire ON/OFF timing read from Number:200/201 virtual components,
-//            LOW fire timing set as script defaults. All tunable without redeploying.
+// v13.3 NEW: HIGH fire ON/OFF timing read from Number:200/201 virtual components.
+// v14.0 NEW: Proportional feed control via asymmetric EMA. H&T pushes room temp
+//            to Number:202. Feed rate interpolates between LOW and HIGH bounds
+//            based on temperature. Slow to escalate, fast to back off.
 
 // PIN MAPPING
 let R_EXHAUST  = 0; 
@@ -25,149 +27,177 @@ let I_POF_SNAP  = 2;
 let I_VACUUM    = 3; 
 
 // VIRTUAL COMPONENTS
-let V_BTN_START    = 200; 
-let V_BTN_STOP     = 201; 
-let V_BTN_FORCE    = 202; 
-let VS_DAY_THERMO  = 200;  // Boolean:200 -- Day thermostat (67-70 deg F range)
-let VS_NIGHT_THERMO = 201; // Boolean:201 -- Night thermostat (58-80 deg F range)
-let VN_HIGH_ON     = 200;  // Number:200 -- HIGH fire ON time (seconds)
-let VN_HIGH_OFF    = 201;  // Number:201 -- HIGH fire OFF time (seconds)
+let V_BTN_START     = 200; 
+let V_BTN_STOP      = 201; 
+let V_BTN_FORCE     = 202; 
+let VS_NIGHT_THERMO = 201; // Boolean:201 -- Night thermostat (56-60 deg F)
+let VN_HIGH_ON      = 200; // Number:200 -- HIGH fire ON time (seconds)
+let VN_HIGH_OFF     = 201; // Number:201 -- HIGH fire OFF time (seconds)
+let VN_ROOM_TEMP    = 202; // Number:202 -- Room temperature (deg F, pushed by H&T)
 
-// CONFIGURATION (Seconds)
-let T_PRIME        = 90;
-let T_IGNITE       = 120;
-let T_RAMP         = 420;
-let T_PURGE        = 1800;  // 30 min -- manual/safety shutdown purge
-let T_THERMO_PURGE = 900;   // 15 min -- thermostat-initiated purge
-let T_VAC_SETTLE   = 5;     // seconds -- delay after exhaust ON before vacuum check
+// CONFIGURATION (Ignition Timing -- seconds)
+let T_PRIME      = 90;
+let T_IGNITE     = 120;
+let T_RAMP       = 420;
+let T_PURGE      = 1800; // 30 min -- manual/safety shutdown purge
+let T_THERMO_PURGE = 900; // 15 min -- thermostat-initiated purge
+let T_VAC_SETTLE = 5;    // delay after exhaust ON before vacuum check
 
-// THERMOSTAT CONFIGURATION
-let T_LOW_TIMEOUT  = 30 * 60 * 1000; // 30 min in ms -- LOW fire before shutdown
-let DAY_START      = 8;               // 8 AM ET -- start of daytime schedule
-let DAY_END        = 22;              // 10 PM ET -- end of daytime schedule
+// FEED RATE BOUNDS (ms)
+// LOW_ON/LOW_OFF define the minimum auger timing -- the floor of the proportional
+// range. Adjust these if the fire burns out or becomes inefficient at minimum.
+let LOW_ON  = 2500;  // Minimum auger ON (ms)
+let LOW_OFF = 5500;  // Minimum auger OFF (ms)
+let highOn  = 4500;  // Ceiling -- synced from Number:200 every heartbeat
+let highOff = 3500;  // Ceiling -- synced from Number:201 every heartbeat
+
+// PROPORTIONAL TEMPERATURE BANDS (deg F)
+// feedRatio = 1.0 at COLD threshold (full HIGH), 0.0 at WARM threshold (minimum).
+// The 4-degree gap provides hysteresis for shutdown/restart cycling.
+let DAY_COLD   = 67;
+let DAY_WARM   = 71;
+let NIGHT_COLD = 56;
+let NIGHT_WARM = 60;
+
+// EMA SMOOTHING (asymmetric)
+// Slow escalation prevents overshoot from an oversized stove.
+// Faster de-escalation cuts fuel quickly when the room responds.
+let ALPHA_UP   = 0.08; // ~14 min to reach 90% of target (ramp up)
+let ALPHA_DOWN = 0.15; // ~7 min to reach 90% of target (ramp down)
+
+// STALENESS & SCHEDULE
+let TEMP_MAX_AGE   = 3600;          // seconds -- shutdown if no temp update
+let T_WARM_TIMEOUT = 30 * 60 * 1000; // 30 min at minimum feed before shutdown
+let DAY_START      = 8;              // 8 AM ET
+let DAY_END        = 22;             // 10 PM ET
 
 // DEBOUNCE THRESHOLDS
 let DB_VACUUM = 10 * 1000; 
 let DB_FIRE   = 60 * 1000; 
 
 // STATE
-// Valid states: IDLE, STARTUP, RUNNING, PURGING, STANDBY
-let state = "IDLE";
-let subState = "";
-let isHighFire = false;
-let activeOn  = 2500;   
-let activeOff = 5500;
-let highOn    = 4500;  // Cached from Number:200 (synced every heartbeat)
-let highOff   = 3500;  // Cached from Number:201 (synced every heartbeat) 
+let state     = "IDLE";
+let subState  = "";
+let feedRatio = 0;       // 0.0 = minimum (LOW), 1.0 = maximum (HIGH). EMA-smoothed.
+let activeOn  = 2500;    // Current auger ON (ms) -- computed by updateFeedParams
+let activeOff = 5500;    // Current auger OFF (ms) -- computed by updateFeedParams
 
-// THERMOSTAT STATE
-let isDaytime      = true;   // Default to daytime until NTP syncs
-let dayNeedsHeat   = true;   // Cached Boolean:200 (true = temp < 68 deg F)
-let nightNeedsHeat = true;   // Cached Boolean:201 (true = temp < 55 deg F)
+// TEMPERATURE STATE
+let roomTemp       = 0;    // Cached from Number:202 (deg F)
+let roomTempTs     = 0;    // last_update_ts from Number:202 (unix seconds)
+let isDaytime      = true; // Default to daytime until NTP syncs
+let nightNeedsHeat = true; // Cached Boolean:201
 
 // TIMERS
-let augerTimer = null;
-let phaseTimer = null;
-let vacDebounceTimer = null;   
+let augerTimer        = null;
+let phaseTimer        = null;
+let vacDebounceTimer  = null;   
 let fireDebounceTimer = null;
-let lowFireTimer = null;       // 30-min LOW fire countdown before thermostat shutdown
+let warmTimer         = null; // Countdown at warm threshold before thermostat shutdown
 
 // TELEMETRY CACHE
-let lastVac = "WAIT";    
+let lastVac  = "WAIT";    
 let lastFire = "WAIT"; 
 
-print("WINSLOW CONTROLLER v13.3: CLOUD-TUNABLE FEED RATES");
+print("WINSLOW CONTROLLER v14.0: PROPORTIONAL TEMPERATURE CONTROL");
 
 // 1. HELPER: The "Safe Switch" (Prevents RPC flooding)
 // ----------------------------------------------------
-function setRelay(id, state, callback) {
-    Shelly.call("Switch.Set", { id: id, on: state }, function() {
+function setRelay(id, st, callback) {
+    Shelly.call("Switch.Set", { id: id, on: st }, function() {
         if (callback) callback();
     });
 }
 
-// 2. FEED LOGIC
-// -------------
+// 2. FEED LOGIC (EMA-Smoothed Proportional Control)
+// --------------------------------------------------
+// Computes a target ratio from room temperature and the active day/night band,
+// then applies an asymmetric exponential moving average: slow to escalate
+// (ALPHA_UP), fast to back off (ALPHA_DOWN). The ratio interpolates activeOn/
+// activeOff between the LOW floor and the HIGH ceiling.
 function updateFeedParams() {
-    activeOn  = isHighFire ? highOn : 2500; 
-    activeOff = isHighFire ? highOff : 5500;
+    if (roomTemp <= 0) return; // No valid temp yet -- hold current feed
+
+    let cold = isDaytime ? DAY_COLD : NIGHT_COLD;
+    let warm = isDaytime ? DAY_WARM : NIGHT_WARM;
+
+    let target = (warm - roomTemp) / (warm - cold);
+    if (target < 0) target = 0;
+    if (target > 1) target = 1;
+
+    let alpha = (target > feedRatio) ? ALPHA_UP : ALPHA_DOWN;
+    feedRatio = feedRatio * (1 - alpha) + target * alpha;
+
+    activeOn  = (LOW_ON  + feedRatio * (highOn - LOW_ON)) | 0;
+    activeOff = (LOW_OFF - feedRatio * (LOW_OFF - highOff)) | 0;
 }
 
-// 2b. THERMOSTAT HELPER: Returns the active thermostat signal based on time of day
-// ---------------------------------------------------------------------------------
-function activeNeedsHeat() {
-    return isDaytime ? dayNeedsHeat : nightNeedsHeat;
-}
+// 2b. TEMPERATURE-BASED CONTROL LOGIC
+// ------------------------------------
+// Manages shutdown timers and auto-restart based on room temperature.
+// Called each heartbeat after updateFeedParams().
+function processTemperature() {
+    if (roomTemp <= 0) return;
 
-// 2c. THERMOSTAT LOGIC: Processes changes from the active thermostat boolean
-// --------------------------------------------------------------------------
-// Called when: (a) the active boolean changes, (b) day/night transition occurs.
-// Only acts when state is RUNNING, STANDBY, or thermostat-initiated PURGING.
-function processThermostatChange(needsHeat) {
+    let warm = isDaytime ? DAY_WARM : NIGHT_WARM;
+    let cold = isDaytime ? DAY_COLD : NIGHT_COLD;
 
-    // --- RUNNING: Step down, step up, or begin shutdown ---
+    // --- RUNNING: start/cancel shutdown timer based on temperature ---
     if (state === "RUNNING") {
-        if (!needsHeat) {
-            // Room is warm enough. Switch to LOW fire and start countdown.
-            if (isHighFire) {
-                isHighFire = false;
-                updateFeedParams();
-                print("THERMOSTAT: Room warm. Stepping down to LOW fire.");
+        if (roomTemp >= warm) {
+            if (!warmTimer) {
+                print("TEMP: " + roomTemp + "F >= " + warm + "F. 30-min shutdown timer started.");
+                warmTimer = Timer.set(T_WARM_TIMEOUT, false, function() {
+                    print("TEMP: 30 min at warm threshold. Shutting down.");
+                    warmTimer = null;
+                    stopStove(T_THERMO_PURGE, true);
+                });
             }
-            // Start (or restart) the 30-min LOW fire countdown
-            Timer.clear(lowFireTimer);
-            lowFireTimer = Timer.set(T_LOW_TIMEOUT, false, function() {
-                print("THERMOSTAT: LOW fire timeout (30 min). Shutting down.");
-                lowFireTimer = null;
-                stopStove(T_THERMO_PURGE, true);
-            });
         } else {
-            // Room needs heat. Cancel any shutdown countdown, go to HIGH.
-            if (lowFireTimer) {
-                Timer.clear(lowFireTimer);
-                lowFireTimer = null;
-                print("THERMOSTAT: Room cooling. Cancelling shutdown timer.");
-            }
-            if (!isHighFire) {
-                isHighFire = true;
-                updateFeedParams();
-                print("THERMOSTAT: Stepping up to HIGH fire.");
+            if (warmTimer) {
+                Timer.clear(warmTimer);
+                warmTimer = null;
             }
         }
         return;
     }
 
-    // --- STANDBY: Auto-restart if room needs heat ---
-    if (state === "STANDBY" && needsHeat) {
-        print("THERMOSTAT: Room needs heat. Auto-restarting from STANDBY.");
-        state = "IDLE";
-        startStartup();
+    // --- STANDBY: auto-restart when room cools to cold threshold ---
+    if (state === "STANDBY" && roomTemp <= cold) {
+        if (isDaytime) {
+            print("TEMP: " + roomTemp + "F <= " + cold + "F. Auto-restarting from STANDBY.");
+            state = "IDLE";
+            startStartup();
+        } else if (nightNeedsHeat) {
+            print("TEMP: Night, " + roomTemp + "F <= " + cold + "F. Auto-restarting from STANDBY.");
+            state = "IDLE";
+            startStartup();
+        }
         return;
     }
 
-    // --- THERMOSTAT PURGE: Cancel purge and restart if room needs heat ---
-    if (state === "PURGING" && subState === "THERMO_COOLING" && needsHeat) {
-        print("THERMOSTAT: Room needs heat during purge. Cancelling purge, restarting.");
-        Timer.clear(phaseTimer);
-        state = "IDLE";
-        startStartup();
-        return;
+    // --- THERMOSTAT PURGE: cancel purge and restart if room cooled ---
+    if (state === "PURGING" && subState === "THERMO_COOLING" && roomTemp <= cold) {
+        if (isDaytime || nightNeedsHeat) {
+            print("TEMP: " + roomTemp + "F during purge. Cancelling purge, restarting.");
+            Timer.clear(phaseTimer);
+            state = "IDLE";
+            startStartup();
+        }
     }
 }
 
+// 2c. AUGER CYCLE
+// ----------------
 function runAugerCycle() {
     if (state !== "RUNNING" && subState !== "PRIME" && subState !== "RAMP") {
         setRelay(R_AUGER, false);
         return; 
     }
 
-    // ON
     setRelay(R_AUGER, true, function() {
-        // Wait for ON time
         augerTimer = Timer.set(activeOn, false, function() {
-            // OFF
             setRelay(R_AUGER, false, function() {
-                // Wait for OFF time
                 if (state === "RUNNING" || subState === "PRIME" || subState === "RAMP") {
                     augerTimer = Timer.set(activeOff, false, function() {
                         runAugerCycle(); 
@@ -180,32 +210,25 @@ function runAugerCycle() {
 
 // 3. SAFE SHUTDOWN (The Waterfall)
 // --------------------------------
-// Forces relays 1-by-1 to avoid "Too Many Calls"
-// isThermostat: if true, purge ends in STANDBY (auto-restart eligible).
-//               if false/undefined, purge ends in IDLE (manual restart required).
+// isThermostat: true = purge ends in STANDBY (auto-restart eligible).
+//               false = purge ends in IDLE (manual restart required).
 function stopStove(purgeDuration, isThermostat) {
     print("!!! STOPPING STOVE" + (isThermostat ? " (THERMOSTAT)" : "") + " !!!");
     state = "PURGING"; 
     subState = isThermostat ? "THERMO_COOLING" : "COOLING";
     
-    // Kill all running timers
     Timer.clear(augerTimer);
     Timer.clear(phaseTimer);
     Timer.clear(vacDebounceTimer); 
     Timer.clear(fireDebounceTimer);
-    Timer.clear(lowFireTimer);
-    lowFireTimer = null;
+    Timer.clear(warmTimer);
+    warmTimer = null;
     
-    // WATERFALL SEQUENCE: Auger -> Igniter -> Exhaust -> Fan
     setRelay(R_AUGER, false, function() {
         setRelay(R_IGNITER, false, function() {
             setRelay(R_EXHAUST, true, function() {
                 setRelay(R_CONV_FAN, true, function() {
-                    
-                    // Set Purge Timer
                     phaseTimer = Timer.set(purgeDuration * 1000, false, function() {
-                        // Thermostat shutdown -> STANDBY (auto-restart eligible)
-                        // Manual/safety shutdown -> IDLE (manual restart required)
                         if (subState === "THERMO_COOLING") {
                             print("Thermostat Purge Complete. Entering STANDBY.");
                             state = "STANDBY";
@@ -227,78 +250,94 @@ function stopStove(purgeDuration, isThermostat) {
 
 // 4. SYNC SENSORS (The Waterfall)
 // -------------------------------
-// Serialized chain: Fire -> Vacuum -> DayThermo -> NightThermo -> HighOn -> HighOff -> SysTime -> Print
+// Chain: Fire -> Vacuum -> NightThermo -> HighOn -> HighOff -> RoomTemp -> SysTime -> Logic
 function syncSensors() {
-    // 1. Check Fire
+    // 1. Fire
     Shelly.call("Input.GetStatus", { id: I_POF_SNAP }, function(res) {
         if (res) lastFire = res.state ? "HOT" : "COLD";
         
-        // 2. Check Vacuum
+        // 2. Vacuum
         Shelly.call("Input.GetStatus", { id: I_VACUUM }, function(vac) {
-             if (vac) lastVac = vac.state ? "OK" : "OPEN";
-             
-             // 3. Check Day Thermostat (Boolean:200)
-             Shelly.call("Boolean.GetStatus", { id: VS_DAY_THERMO }, function(dayTherm) {
-                 if (dayTherm && typeof dayTherm.value !== 'undefined') {
-                     dayNeedsHeat = dayTherm.value;
-                 }
-                 
-                 // 4. Check Night Thermostat (Boolean:201)
-                 Shelly.call("Boolean.GetStatus", { id: VS_NIGHT_THERMO }, function(nightTherm) {
-                     if (nightTherm && typeof nightTherm.value !== 'undefined') {
-                         nightNeedsHeat = nightTherm.value;
-                     }
-                     
-                     // 5. Sync HIGH fire ON time (Number:200)
-                     Shelly.call("Number.GetStatus", { id: VN_HIGH_ON }, function(hOn) {
-                         if (hOn && typeof hOn.value === 'number' && hOn.value > 0) {
-                             highOn = hOn.value * 1000;
-                         }
-                         
-                         // 6. Sync HIGH fire OFF time (Number:201)
-                         Shelly.call("Number.GetStatus", { id: VN_HIGH_OFF }, function(hOff) {
-                             if (hOff && typeof hOff.value === 'number' && hOff.value > 0) {
-                                 highOff = hOff.value * 1000;
-                             }
-                     
-                             // 7. Check System Time for day/night schedule
-                             Shelly.call("Sys.GetStatus", {}, function(sys) {
-                         let prevDaytime = isDaytime;
-                         
-                         if (sys && typeof sys.unixtime === 'number' && sys.unixtime > 0) {
-                             // Shelly reports local time in sys.time as "HH:MM"
-                             if (sys.time) {
-                                 let parts = sys.time.split(":");
-                                 let hour = Number(parts[0]);
-                                 isDaytime = (hour >= DAY_START && hour < DAY_END);
-                             }
-                         }
-                         // If NTP hasn't synced yet (unixtime === 0), isDaytime stays true (safe default)
-                         
-                         // Sync isHighFire to the active thermostat signal
-                         let activeSignal = activeNeedsHeat();
-                         isHighFire = activeSignal;
-                         updateFeedParams();
-                         
-                         // Handle day/night transition: re-evaluate thermostat with new active boolean
-                         if (prevDaytime !== isDaytime) {
-                             let period = isDaytime ? "DAY" : "NIGHT";
-                             print("SCHEDULE: Transitioning to " + period + " mode.");
-                             processThermostatChange(activeSignal);
-                         }
-                         
-                         // DONE: Print Heartbeat
-                         let mode = isHighFire ? "HIGH" : "LOW";
-                         let period = isDaytime ? "DAY" : "NIGHT";
-                         print("HEARTBEAT: " + state + " (" + subState + ") | Heat: " + mode + 
-                               " | Vac: " + lastVac + " | Fire: " + lastFire +
-                               " | Schedule: " + period +
-                               " | Feed: " + activeOn + "/" + activeOff);
-                     });
-                     });
-                     });
-                 });
-             });
+            if (vac) lastVac = vac.state ? "OK" : "OPEN";
+            
+            // 3. Night Thermostat (Boolean:201)
+            Shelly.call("Boolean.GetStatus", { id: VS_NIGHT_THERMO }, function(nt) {
+                if (nt && typeof nt.value !== 'undefined') {
+                    nightNeedsHeat = nt.value;
+                }
+                
+                // 4. HIGH fire ON ceiling (Number:200)
+                Shelly.call("Number.GetStatus", { id: VN_HIGH_ON }, function(hOn) {
+                    if (hOn && typeof hOn.value === 'number' && hOn.value > 0) {
+                        highOn = (hOn.value * 1000) | 0;
+                    }
+                    
+                    // 5. HIGH fire OFF ceiling (Number:201)
+                    Shelly.call("Number.GetStatus", { id: VN_HIGH_OFF }, function(hOff) {
+                        if (hOff && typeof hOff.value === 'number' && hOff.value > 0) {
+                            highOff = (hOff.value * 1000) | 0;
+                        }
+                        
+                        // 6. Room Temperature (Number:202 -- pushed by H&T)
+                        Shelly.call("Number.GetStatus", { id: VN_ROOM_TEMP }, function(temp) {
+                            if (temp && typeof temp.value === 'number') {
+                                roomTemp = temp.value;
+                                if (typeof temp.last_update_ts === 'number') {
+                                    roomTempTs = temp.last_update_ts;
+                                }
+                            }
+                            
+                            // 7. System Time
+                            Shelly.call("Sys.GetStatus", {}, function(sys) {
+                                let prevDaytime = isDaytime;
+                                let unixNow = 0;
+                                
+                                if (sys && typeof sys.unixtime === 'number' && sys.unixtime > 0) {
+                                    unixNow = sys.unixtime;
+                                    if (sys.time) {
+                                        let parts = sys.time.split(":");
+                                        let hour = Number(parts[0]);
+                                        isDaytime = (hour >= DAY_START && hour < DAY_END);
+                                    }
+                                }
+                                
+                                // STALENESS CHECK
+                                if (roomTempTs > 0 && unixNow > 0 && (unixNow - roomTempTs) > TEMP_MAX_AGE) {
+                                    if (state === "RUNNING" || state === "STARTUP") {
+                                        let age = unixNow - roomTempTs;
+                                        print("SAFETY: Temp stale (" + age + "s old). Shutting down.");
+                                        stopStove(T_PURGE, false);
+                                        return;
+                                    }
+                                }
+                                
+                                // EMA FEED UPDATE
+                                updateFeedParams();
+                                
+                                // TEMPERATURE-BASED THERMOSTAT LOGIC
+                                processTemperature();
+                                
+                                // DAY/NIGHT TRANSITION
+                                if (prevDaytime !== isDaytime) {
+                                    let period = isDaytime ? "DAY" : "NIGHT";
+                                    print("SCHEDULE: Transitioning to " + period + " mode.");
+                                }
+                                
+                                // HEARTBEAT
+                                let period = isDaytime ? "DAY" : "NIGHT";
+                                let r = "" + ((feedRatio * 100) | 0);
+                                print("HB: " + state + "(" + subState + ")" +
+                                      " " + roomTemp + "F" +
+                                      " R:" + r + "%" +
+                                      " A:" + activeOn + "/" + activeOff +
+                                      " V:" + lastVac +
+                                      " F:" + lastFire +
+                                      " " + period);
+                            });
+                        });
+                    });
+                });
+            });
         });
     });
 }
@@ -309,18 +348,18 @@ function startStartup() {
     if (state !== "IDLE" && state !== "PURGING") return;
     print("CMD: Start Received.");
     
-    // FIX v13.2: Remember if we're interrupting a purge. On vacuum failure,
-    // we must resume the purge (fans stay on) rather than going to IDLE,
-    // because there may be residual fire that needs venting.
+    // Always start at minimum feed -- EMA ramps up organically
+    feedRatio = 0;
+    activeOn = LOW_ON;
+    activeOff = LOW_OFF;
+
     let wasPurging = (state === "PURGING");
 
-    // FIX v12.1: Clear any existing purge/shutdown timers so we don't die in 10 mins
     Timer.clear(phaseTimer);
     Timer.clear(augerTimer);
+    Timer.clear(warmTimer);
+    warmTimer = null;
 
-    // PRE-FLIGHT: Start exhaust fan first, then verify vacuum.
-    // The vacuum switch requires negative pressure from the exhaust fan to close,
-    // so we must spin up the fan and wait before checking.
     setRelay(R_EXHAUST, true, function() {
         print("PRE-FLIGHT: Exhaust ON. Waiting " + T_VAC_SETTLE + "s for vacuum...");
         
@@ -329,11 +368,9 @@ function startStartup() {
                 if (res && !res.state) {
                     lastVac = "OPEN";
                     if (wasPurging) {
-                        // Residual fire possible -- keep fans running, resume a clean purge
                         print("FAILURE: Vacuum OPEN. Cannot Start. Resuming purge.");
                         stopStove(T_PURGE, false);
                     } else {
-                        // Cold start from IDLE/STANDBY -- safe to turn off exhaust
                         print("FAILURE: Vacuum OPEN. Cannot Start. Exhaust OFF.");
                         setRelay(R_EXHAUST, false);
                         state = "IDLE";
@@ -342,19 +379,15 @@ function startStartup() {
                     return; 
                 }
                 
-                // VACUUM OK -- BEGIN IGNITION SEQUENCE
                 print("SENSORS OK. IGNITION SEQUENCE STARTED.");
                 state = "STARTUP";
                 subState = "PRIME";
                 lastVac = "OK";
                 
-                // Waterfall: Conv -> Igniter -> Feed (Exhaust already ON)
                 setRelay(R_CONV_FAN, true, function() {
                     setRelay(R_IGNITER, true, function() {
-                        updateFeedParams();
                         runAugerCycle();
                         
-                        // TIMING CHAIN
                         phaseTimer = Timer.set(T_PRIME * 1000, false, function() {
                             print(">>> PHASE: WAIT (No Feed)");
                             subState = "WAIT";
@@ -393,8 +426,8 @@ function startStartup() {
 // 6. EVENT LISTENERS
 // ------------------
 Shelly.addStatusHandler(function(status) {
+    // VACUUM SAFETY
     if (status.component === "input:" + I_VACUUM) {
-        // Guard: Ignore vacuum loss when stove is off (IDLE or STANDBY)
         if ((state === "IDLE" || state === "STANDBY") && status.delta.state === false) return;
 
         if (status.delta.state === false) { 
@@ -411,52 +444,46 @@ Shelly.addStatusHandler(function(status) {
         }
     }
 
+    // FIRE SAFETY
     if (status.component === "input:" + I_POF_SNAP) {
         if (state === "RUNNING" && status.delta.state === false) {
-             print("ALERT: Fire Lost! Debouncing...");
-             lastFire = "UNSTABLE";
-             fireDebounceTimer = Timer.set(DB_FIRE, false, function() {
-                 print("SAFETY TRIP: Fire lost > 60s.");
-                 lastFire = "COLD";
-                 stopStove(T_PURGE, false);
-             });
+            print("ALERT: Fire Lost! Debouncing...");
+            lastFire = "UNSTABLE";
+            fireDebounceTimer = Timer.set(DB_FIRE, false, function() {
+                print("SAFETY TRIP: Fire lost > 60s.");
+                lastFire = "COLD";
+                stopStove(T_PURGE, false);
+            });
         }
         else if (state === "RUNNING" && status.delta.state === true) {
-             if (fireDebounceTimer) { Timer.clear(fireDebounceTimer); fireDebounceTimer = null; }
-             lastFire = "HOT";
+            if (fireDebounceTimer) { Timer.clear(fireDebounceTimer); fireDebounceTimer = null; }
+            lastFire = "HOT";
         }
         else if (state === "STARTUP" && subState === "RAMP" && status.delta.state === true) {
-             print("SUCCESS: Fire Detected Early!");
-             state = "RUNNING";
-             subState = "RUN";
-             lastFire = "HOT";
-             setRelay(R_IGNITER, false);
-             Timer.clear(phaseTimer); 
+            print("SUCCESS: Fire Detected Early!");
+            state = "RUNNING";
+            subState = "RUN";
+            lastFire = "HOT";
+            setRelay(R_IGNITER, false);
+            Timer.clear(phaseTimer); 
         }
         else {
-             lastFire = status.delta.state ? "HOT" : "COLD";
-        }
-    }
-    
-    // DAY THERMOSTAT (Boolean:200) -- Cloud sets true when temp < 68 deg F, false when > 72 deg F
-    if (status.component === "boolean:" + VS_DAY_THERMO) {
-        dayNeedsHeat = status.delta.value;
-        if (isDaytime) {
-            isHighFire = dayNeedsHeat;
-            updateFeedParams();
-            print("THERMOSTAT (DAY): " + (dayNeedsHeat ? "HEAT NEEDED" : "WARM ENOUGH"));
-            processThermostatChange(dayNeedsHeat);
+            lastFire = status.delta.state ? "HOT" : "COLD";
         }
     }
 
-    // NIGHT THERMOSTAT (Boolean:201) -- Cloud sets true when temp < 55 deg F, false when > 60 deg F
+    // NIGHT THERMOSTAT (Boolean:201)
+    // Provides immediate event-driven response for nighttime auto-restart.
+    // Shutdown logic is handled by processTemperature() each heartbeat.
     if (status.component === "boolean:" + VS_NIGHT_THERMO) {
         nightNeedsHeat = status.delta.value;
         if (!isDaytime) {
-            isHighFire = nightNeedsHeat;
-            updateFeedParams();
             print("THERMOSTAT (NIGHT): " + (nightNeedsHeat ? "HEAT NEEDED" : "WARM ENOUGH"));
-            processThermostatChange(nightNeedsHeat);
+            if (nightNeedsHeat && state === "STANDBY" && roomTemp > 0 && roomTemp <= NIGHT_COLD) {
+                print("THERMOSTAT: Night, heat needed. Auto-restarting from STANDBY.");
+                state = "IDLE";
+                startStartup();
+            }
         }
     }
 });
@@ -467,40 +494,31 @@ Shelly.addEventHandler(function(event) {
     let c = event.component;
     if (!isPush) return;
 
-    // START BUTTON (Physical or Virtual)
-    // Note: startStartup() only allows IDLE or PURGING. STANDBY is intentionally
-    // excluded -- the stove should only restart from STANDBY via thermostat signal.
     if (c === "input:" + I_START_BTN || c === "button:" + V_BTN_START) {
         startStartup();
     }
     
-    // STOP BUTTON (Physical or Virtual)
-    if (c === "input:" + I_STOP_BTN  || c === "button:" + V_BTN_STOP) {
+    if (c === "input:" + I_STOP_BTN || c === "button:" + V_BTN_STOP) {
         if (state === "STANDBY") {
-            // STANDBY -> IDLE: Disable auto-restart, require manual start
             print("CMD: Stop in STANDBY. Moving to IDLE. Auto-restart disabled.");
             state = "IDLE";
             subState = "";
         } else {
-            // Normal shutdown with full 30-min purge
             stopStove(T_PURGE, false);
         }
     }
     
-    // FORCE RUN (Virtual Only)
     if (c === "button:" + V_BTN_FORCE) {
         print("CMD: Force Run");
-        
-        // Clear all timers to prevent phantom shutdown
         Timer.clear(phaseTimer);
         Timer.clear(augerTimer);
-        Timer.clear(lowFireTimer);
-        lowFireTimer = null;
-
+        Timer.clear(warmTimer);
+        warmTimer = null;
+        feedRatio = 0;
+        activeOn = LOW_ON;
+        activeOff = LOW_OFF;
         state = "RUNNING";
         subState = "RUN";
-        
-        // Force Waterfall Start
         setRelay(R_IGNITER, false, function() {
             setRelay(R_EXHAUST, true, function() {
                 setRelay(R_CONV_FAN, true, function() {
@@ -511,17 +529,14 @@ Shelly.addEventHandler(function(event) {
     }
 });
 
-// 7. BOOT SEQUENCE (Serialized)
-// -----------------------------
-// Step 1: Safe Shutdown (not thermostat-initiated -- boots to IDLE, not STANDBY)
+// 7. BOOT SEQUENCE
+// ----------------
 stopStove(600, false);
 
-// Step 2: Sync Sensors (Delayed 2s to let Shutdown finish)
 Timer.set(2000, false, function() {
     syncSensors();
 });
 
-// Step 3: Start Heartbeat Loop
 Timer.set(30000, true, function() {
     syncSensors();
 });
