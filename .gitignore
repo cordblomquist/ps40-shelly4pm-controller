@@ -12,3 +12,4 @@ deploy.sh
 .cursor/
 logs/
 stove-logger.py
+archive/
