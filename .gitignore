@@ -2,5 +2,13 @@
 PELLET_STOVE_CONTROLLER_GUIDE.md
 *.pdf
 
+# Secrets
+.env
+
+# Local tooling
+deploy.sh
+
 # Cursor project config
 .cursor/
+logs/
+stove-logger.py

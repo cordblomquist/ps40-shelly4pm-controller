@@ -1,6 +1,6 @@
 # Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)
 
-**Current Version:** v13.2 (Stable)  
+**Current Version:** v13.3 (Stable)  
 **Hardware:** Shelly Pro 4PM  
 **Language:** Shelly mJS (Micro-JavaScript)
 
@@ -19,6 +19,13 @@ The controller manages the entire combustion cycle using a **Finite State Machin
 ---
 
 ## Changelog
+
+### v13.3 — Cloud-Tunable Feed Rates
+* **NEW: HIGH fire ON/OFF timing is now read from virtual Number components.**
+    * HIGH fire uses `Number:200` (ON time) and `Number:201` (OFF time), synced every heartbeat via the waterfall RPC chain. Adjustable from the Shelly app without redeploying the script.
+    * LOW fire timing uses script defaults (`activeOn = 2500ms`, `activeOff = 5500ms`).
+    * Heartbeat now prints active feed timing for monitoring.
+* Updated thermostat ranges: Day 67-70°F, Night 58-80°F (configured in Shelly Cloud Actions on H&T Gen3).
 
 ### v13.2 — Purge-Safe Vacuum Failure
 * **FIXED: Exhaust fan cut and orphaned convection fan on failed start-from-purge.**
@@ -102,8 +109,10 @@ Instead of polling the hardware constantly, the script listens for events:
 
 ## Virtual Components (Optional)
 The script supports Shelly Virtual Components for UI control:
-- `Boolean:200`: Day Thermostat — Cloud-driven. `true` = room needs heat (<68°F), `false` = warm enough (>72°F).
-- `Boolean:201`: Night Thermostat — Cloud-driven. `true` = room needs heat (<55°F), `false` = warm enough (>60°F).
+- `Boolean:200`: Day Thermostat — Cloud-driven. `true` = room needs heat (<67°F), `false` = warm enough (>70°F).
+- `Boolean:201`: Night Thermostat — Cloud-driven. `true` = room needs heat (<58°F), `false` = warm enough (>80°F).
+- `Number:200`: HIGH Fire ON time (seconds). Default 4.5s. Synced every heartbeat.
+- `Number:201`: HIGH Fire OFF time (seconds). Default 3.5s. Synced every heartbeat.
 - `Button:200`: Virtual Start.
 - `Button:201`: Virtual Stop.
 - `Button:202`: Force Run (Bypass Ignition).
