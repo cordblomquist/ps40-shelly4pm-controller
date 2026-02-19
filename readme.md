@@ -113,8 +113,9 @@ The Shelly Pro 4PM has a limit of 5 concurrent RPC calls. Relays are toggled one
 | `Button:200` | Start Stove | — | — | Triggers startup sequence. |
 | `Button:201` | Stop Stove | — | — | Triggers shutdown. |
 | `Button:202` | Force Run | — | — | Bypass ignition, go directly to RUNNING. |
+| `Group:200` | Stove Controls | — | — | Groups components in Shelly web UI. |
 
-**Total:** 9 components (1 slot free for future use)
+**Total:** 10 components (at limit)
 
 ## Tunable Parameters (via Shelly App)
 
