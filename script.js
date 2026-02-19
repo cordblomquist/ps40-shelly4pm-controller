@@ -76,7 +76,7 @@ let lowFireTimer = null;       // 30-min LOW fire countdown before thermostat sh
 let lastVac = "WAIT";    
 let lastFire = "WAIT"; 
 
-print("WINSLOW CONTROLLER v13.2: THERMOSTAT AUTO-CONTROL");
+print("WINSLOW CONTROLLER v13.3: CLOUD-TUNABLE FEED RATES");
 
 // 1. HELPER: The "Safe Switch" (Prevents RPC flooding)
 // ----------------------------------------------------
