@@ -1,5 +1,5 @@
-// WINSLOW PS40 CONTROLLER - v14.1 (UI-Tunable Parameters)
-// --------------------------------------------------------
+// WINSLOW PS40 CONTROLLER - v14.2 (Simplified Feed & Tunable Temp Bands)
+// -----------------------------------------------------------------------
 // ARCHITECTURE: Waterfall RPC (Serialized Calls), Event-Driven
 // v12.1 FIX: Clears boot/purge timers on Start to prevent phantom shutdown.
 // v13.0 NEW: Room thermostat auto-control via Shelly H&T Gen3.
@@ -7,8 +7,9 @@
 // v13.2 FIX: Purge-safe vacuum failure handling.
 // v13.3 NEW: HIGH fire timing from Number:200/201.
 // v14.0 NEW: Proportional feed via asymmetric EMA. H&T pushes temp to Number:202.
-// v14.1 NEW: All operational parameters tunable from Shelly UI (Number:203-206).
-//            Removed Boolean:201 -- schedule + temperature handles everything.
+// v14.1 NEW: All operational parameters tunable from Shelly UI.
+// v14.2 NEW: Hardcoded feed rates (PS40 spec ~2.5x ratio). Tunable temp bands
+//            via Day Cold, Night Cold, Hysteresis sliders. Warm = Cold + Hysteresis.
 
 // PIN MAPPING
 let R_EXHAUST  = 0; 
@@ -22,18 +23,17 @@ let I_POF_SNAP  = 2;
 let I_VACUUM    = 3; 
 
 // VIRTUAL COMPONENTS
-let V_BTN_START  = 200;  // Button:200 -- Start Stove
-let V_BTN_STOP   = 201;  // Button:201 -- Stop Stove
-let V_BTN_FORCE  = 202;  // Button:202 -- Force Run
-let VN_HIGH_ON   = 200;  // Number:200 -- HIGH fire ON (seconds)
-let VN_HIGH_OFF  = 201;  // Number:201 -- HIGH fire OFF (seconds)
-let VN_ROOM_TEMP = 202;  // Number:202 -- Room temperature (deg F, pushed by H&T)
-let VN_LOW_ON    = 203;  // Number:203 -- LOW fire ON (seconds)
-let VN_LOW_OFF   = 204;  // Number:204 -- LOW fire OFF (seconds)
-let VN_DAY_START = 205;  // Number:205 -- Day schedule start hour (0-23)
-let VN_DAY_END   = 206;  // Number:206 -- Day schedule end hour (0-23)
+let V_BTN_START   = 200;  // Button:200 -- Start Stove
+let V_BTN_STOP    = 201;  // Button:201 -- Stop Stove
+let V_BTN_FORCE   = 202;  // Button:202 -- Force Run
+let VN_DAY_COLD   = 200;  // Number:200 -- Day cold threshold (deg F)
+let VN_NIGHT_COLD = 201;  // Number:201 -- Night cold threshold (deg F)
+let VN_ROOM_TEMP  = 202;  // Number:202 -- Room temperature (deg F, pushed by H&T)
+let VN_HYSTERESIS = 203;  // Number:203 -- Hysteresis (deg F, warm = cold + this)
+let VN_DAY_START  = 205;  // Number:205 -- Day schedule start hour (0-23)
+let VN_DAY_END    = 206;  // Number:206 -- Day schedule end hour (0-23)
 
-// CONFIGURATION (Ignition Timing -- seconds, not tunable from UI)
+// CONFIGURATION (Ignition Timing -- seconds)
 let T_PRIME      = 90;
 let T_IGNITE     = 120;
 let T_RAMP       = 420;
@@ -41,20 +41,18 @@ let T_PURGE      = 1800; // 30 min -- manual/safety shutdown purge
 let T_THERMO_PURGE = 900; // 15 min -- thermostat-initiated purge
 let T_VAC_SETTLE = 5;    // delay after exhaust ON before vacuum check
 
-// FEED RATE BOUNDS (ms) -- synced from Number:203/204 every heartbeat
-// Defaults used if virtual components don't exist or return invalid values.
-let lowOn   = 2500;  // Minimum auger ON (floor)
-let lowOff  = 5500;  // Minimum auger OFF (floor)
-let highOn  = 4500;  // Maximum auger ON (ceiling) -- from Number:200
-let highOff = 3500;  // Maximum auger OFF (ceiling) -- from Number:201
+// FEED RATE BOUNDS (ms) -- hardcoded per PS40 spec (~2.5x ratio)
+// LOW: minimum viable flame. HIGH: maximum feed for extreme cold.
+let LOW_ON   = 2500;  // Minimum auger ON (ms)
+let LOW_OFF  = 5500;  // Minimum auger OFF (ms)
+let HIGH_ON  = 6500;  // Maximum auger ON (ms)
+let HIGH_OFF = 1500;  // Maximum auger OFF (ms)
 
-// PROPORTIONAL TEMPERATURE BANDS (deg F)
-// feedRatio = 1.0 at COLD threshold (full HIGH), 0.0 at WARM threshold (minimum).
-// The 4-degree gap provides hysteresis for shutdown/restart cycling.
-let DAY_COLD   = 67;
-let DAY_WARM   = 71;
-let NIGHT_COLD = 56;
-let NIGHT_WARM = 60;
+// TEMPERATURE BANDS (deg F) -- synced from Number:200/201/203 every heartbeat
+// Warm threshold = Cold threshold + Hysteresis. Provides shutdown/restart cycling.
+let dayCold    = 67;  // Default -- synced from Number:200
+let nightCold  = 56;  // Default -- synced from Number:201
+let hysteresis = 4;   // Default -- synced from Number:203
 
 // EMA SMOOTHING (asymmetric)
 let ALPHA_UP   = 0.08; // ~14 min to reach 90% of target (ramp up)
@@ -93,7 +91,7 @@ let warmTimer         = null;
 let lastVac  = "WAIT";    
 let lastFire = "WAIT"; 
 
-print("WINSLOW CONTROLLER v14.1: UI-TUNABLE PARAMETERS");
+print("WINSLOW CONTROLLER v14.2: SIMPLIFIED FEED & TUNABLE TEMP BANDS");
 
 // 1. HELPER: The "Safe Switch" (Prevents RPC flooding)
 // ----------------------------------------------------
@@ -105,11 +103,13 @@ function setRelay(id, st, callback) {
 
 // 2. FEED LOGIC (EMA-Smoothed Proportional Control)
 // --------------------------------------------------
+// Computes warm thresholds on the fly: warm = cold + hysteresis.
+// Feed rate interpolates between hardcoded LOW and HIGH bounds.
 function updateFeedParams() {
     if (roomTemp <= 0) return;
 
-    let cold = isDaytime ? DAY_COLD : NIGHT_COLD;
-    let warm = isDaytime ? DAY_WARM : NIGHT_WARM;
+    let cold = isDaytime ? dayCold : nightCold;
+    let warm = cold + hysteresis;
 
     let target = (warm - roomTemp) / (warm - cold);
     if (target < 0) target = 0;
@@ -118,17 +118,18 @@ function updateFeedParams() {
     let alpha = (target > feedRatio) ? ALPHA_UP : ALPHA_DOWN;
     feedRatio = feedRatio * (1 - alpha) + target * alpha;
 
-    activeOn  = (lowOn  + feedRatio * (highOn - lowOn)) | 0;
-    activeOff = (lowOff - feedRatio * (lowOff - highOff)) | 0;
+    activeOn  = (LOW_ON  + feedRatio * (HIGH_ON - LOW_ON)) | 0;
+    activeOff = (LOW_OFF - feedRatio * (LOW_OFF - HIGH_OFF)) | 0;
 }
 
 // 2b. TEMPERATURE-BASED CONTROL LOGIC
 // ------------------------------------
+// Warm = Cold + Hysteresis. Manages shutdown timers and auto-restart.
 function processTemperature() {
     if (roomTemp <= 0) return;
 
-    let warm = isDaytime ? DAY_WARM : NIGHT_WARM;
-    let cold = isDaytime ? DAY_COLD : NIGHT_COLD;
+    let cold = isDaytime ? dayCold : nightCold;
+    let warm = cold + hysteresis;
 
     // --- RUNNING: start/cancel shutdown timer based on temperature ---
     if (state === "RUNNING") {
@@ -228,7 +229,7 @@ function stopStove(purgeDuration, isThermostat) {
 
 // 4. SYNC SENSORS (The Waterfall)
 // -------------------------------
-// Chain: Fire -> Vacuum -> HighOn -> HighOff -> LowOn -> LowOff -> RoomTemp -> DayStart -> DayEnd -> SysTime -> Logic
+// Chain: Fire -> Vacuum -> DayCold -> NightCold -> Hysteresis -> RoomTemp -> DayStart -> DayEnd -> SysTime -> Logic
 function syncSensors() {
     // 1. Fire
     Shelly.call("Input.GetStatus", { id: I_POF_SNAP }, function(res) {
@@ -238,99 +239,95 @@ function syncSensors() {
         Shelly.call("Input.GetStatus", { id: I_VACUUM }, function(vac) {
             if (vac) lastVac = vac.state ? "OK" : "OPEN";
             
-            // 3. HIGH fire ON ceiling (Number:200)
-            Shelly.call("Number.GetStatus", { id: VN_HIGH_ON }, function(hOn) {
-                if (hOn && typeof hOn.value === 'number' && hOn.value > 0) {
-                    highOn = (hOn.value * 1000) | 0;
+            // 3. Day Cold threshold (Number:200)
+            Shelly.call("Number.GetStatus", { id: VN_DAY_COLD }, function(dc) {
+                if (dc && typeof dc.value === 'number' && dc.value >= 45 && dc.value <= 75) {
+                    dayCold = dc.value | 0;
                 }
                 
-                // 4. HIGH fire OFF ceiling (Number:201)
-                Shelly.call("Number.GetStatus", { id: VN_HIGH_OFF }, function(hOff) {
-                    if (hOff && typeof hOff.value === 'number' && hOff.value > 0) {
-                        highOff = (hOff.value * 1000) | 0;
+                // 4. Night Cold threshold (Number:201)
+                Shelly.call("Number.GetStatus", { id: VN_NIGHT_COLD }, function(nc) {
+                    if (nc && typeof nc.value === 'number' && nc.value >= 45 && nc.value <= 75) {
+                        nightCold = nc.value | 0;
                     }
                     
-                    // 5. LOW fire ON floor (Number:203)
-                    Shelly.call("Number.GetStatus", { id: VN_LOW_ON }, function(lOn) {
-                        if (lOn && typeof lOn.value === 'number' && lOn.value > 0) {
-                            lowOn = (lOn.value * 1000) | 0;
+                    // 5. Hysteresis (Number:203)
+                    Shelly.call("Number.GetStatus", { id: VN_HYSTERESIS }, function(hy) {
+                        if (hy && typeof hy.value === 'number' && hy.value >= 1 && hy.value <= 5) {
+                            hysteresis = hy.value | 0;
                         }
                         
-                        // 6. LOW fire OFF floor (Number:204)
-                        Shelly.call("Number.GetStatus", { id: VN_LOW_OFF }, function(lOff) {
-                            if (lOff && typeof lOff.value === 'number' && lOff.value > 0) {
-                                lowOff = (lOff.value * 1000) | 0;
+                        // 6. Room Temperature (Number:202)
+                        Shelly.call("Number.GetStatus", { id: VN_ROOM_TEMP }, function(temp) {
+                            if (temp && typeof temp.value === 'number') {
+                                roomTemp = temp.value;
+                                if (typeof temp.last_update_ts === 'number') {
+                                    roomTempTs = temp.last_update_ts;
+                                }
                             }
                             
-                            // 7. Room Temperature (Number:202)
-                            Shelly.call("Number.GetStatus", { id: VN_ROOM_TEMP }, function(temp) {
-                                if (temp && typeof temp.value === 'number') {
-                                    roomTemp = temp.value;
-                                    if (typeof temp.last_update_ts === 'number') {
-                                        roomTempTs = temp.last_update_ts;
-                                    }
+                            // 7. Day Start hour (Number:205)
+                            Shelly.call("Number.GetStatus", { id: VN_DAY_START }, function(ds) {
+                                if (ds && typeof ds.value === 'number' && ds.value >= 0 && ds.value <= 23) {
+                                    dayStart = ds.value | 0;
                                 }
                                 
-                                // 8. Day Start hour (Number:205)
-                                Shelly.call("Number.GetStatus", { id: VN_DAY_START }, function(ds) {
-                                    if (ds && typeof ds.value === 'number' && ds.value >= 0 && ds.value <= 23) {
-                                        dayStart = ds.value | 0;
+                                // 8. Day End hour (Number:206)
+                                Shelly.call("Number.GetStatus", { id: VN_DAY_END }, function(de) {
+                                    if (de && typeof de.value === 'number' && de.value >= 0 && de.value <= 23) {
+                                        dayEnd = de.value | 0;
                                     }
                                     
-                                    // 9. Day End hour (Number:206)
-                                    Shelly.call("Number.GetStatus", { id: VN_DAY_END }, function(de) {
-                                        if (de && typeof de.value === 'number' && de.value >= 0 && de.value <= 23) {
-                                            dayEnd = de.value | 0;
+                                    // 9. System Time
+                                    Shelly.call("Sys.GetStatus", {}, function(sys) {
+                                        let prevDaytime = isDaytime;
+                                        let unixNow = 0;
+                                        
+                                        if (sys && typeof sys.unixtime === 'number' && sys.unixtime > 0) {
+                                            unixNow = sys.unixtime;
+                                            if (sys.time) {
+                                                let parts = sys.time.split(":");
+                                                let hour = Number(parts[0]);
+                                                isDaytime = (hour >= dayStart && hour < dayEnd);
+                                            }
                                         }
                                         
-                                        // 10. System Time
-                                        Shelly.call("Sys.GetStatus", {}, function(sys) {
-                                            let prevDaytime = isDaytime;
-                                            let unixNow = 0;
-                                            
-                                            if (sys && typeof sys.unixtime === 'number' && sys.unixtime > 0) {
-                                                unixNow = sys.unixtime;
-                                                if (sys.time) {
-                                                    let parts = sys.time.split(":");
-                                                    let hour = Number(parts[0]);
-                                                    isDaytime = (hour >= dayStart && hour < dayEnd);
-                                                }
+                                        // STALENESS CHECK
+                                        if (roomTempTs > 0 && unixNow > 0 && (unixNow - roomTempTs) > TEMP_MAX_AGE) {
+                                            if (state === "RUNNING" || state === "STARTUP") {
+                                                let age = unixNow - roomTempTs;
+                                                print("SAFETY: Temp stale (" + age + "s old). Shutting down.");
+                                                stopStove(T_PURGE, false);
+                                                return;
                                             }
-                                            
-                                            // STALENESS CHECK
-                                            if (roomTempTs > 0 && unixNow > 0 && (unixNow - roomTempTs) > TEMP_MAX_AGE) {
-                                                if (state === "RUNNING" || state === "STARTUP") {
-                                                    let age = unixNow - roomTempTs;
-                                                    print("SAFETY: Temp stale (" + age + "s old). Shutting down.");
-                                                    stopStove(T_PURGE, false);
-                                                    return;
-                                                }
-                                            }
-                                            
-                                            // EMA FEED UPDATE
-                                            updateFeedParams();
-                                            
-                                            // TEMPERATURE-BASED CONTROL LOGIC
-                                            processTemperature();
-                                            
-                                            // DAY/NIGHT TRANSITION
-                                            if (prevDaytime !== isDaytime) {
-                                                let period = isDaytime ? "DAY" : "NIGHT";
-                                                print("SCHEDULE: Transitioning to " + period + " mode.");
-                                            }
-                                            
-                                            // HEARTBEAT
+                                        }
+                                        
+                                        // EMA FEED UPDATE
+                                        updateFeedParams();
+                                        
+                                        // TEMPERATURE-BASED CONTROL LOGIC
+                                        processTemperature();
+                                        
+                                        // DAY/NIGHT TRANSITION
+                                        if (prevDaytime !== isDaytime) {
                                             let period = isDaytime ? "DAY" : "NIGHT";
-                                            let r = "" + ((feedRatio * 100) | 0);
-                                            print("HB: " + state + "(" + subState + ")" +
-                                                  " " + roomTemp + "F" +
-                                                  " R:" + r + "%" +
-                                                  " A:" + activeOn + "/" + activeOff +
-                                                  " V:" + lastVac +
-                                                  " F:" + lastFire +
-                                                  " " + period +
-                                                  " S:" + dayStart + "-" + dayEnd);
-                                        });
+                                            print("SCHEDULE: Transitioning to " + period + " mode.");
+                                        }
+                                        
+                                        // HEARTBEAT
+                                        let period = isDaytime ? "DAY" : "NIGHT";
+                                        let r = "" + ((feedRatio * 100) | 0);
+                                        let dw = dayCold + hysteresis;
+                                        let nw = nightCold + hysteresis;
+                                        print("HB: " + state + "(" + subState + ")" +
+                                              " " + roomTemp + "F" +
+                                              " R:" + r + "%" +
+                                              " A:" + activeOn + "/" + activeOff +
+                                              " V:" + lastVac +
+                                              " F:" + lastFire +
+                                              " " + period +
+                                              " D:" + dayCold + "-" + dw +
+                                              " N:" + nightCold + "-" + nw);
                                     });
                                 });
                             });
@@ -350,8 +347,8 @@ function startStartup() {
     
     // Always start at minimum feed -- EMA ramps up organically
     feedRatio = 0;
-    activeOn = lowOn;
-    activeOff = lowOff;
+    activeOn = LOW_ON;
+    activeOff = LOW_OFF;
 
     let wasPurging = (state === "PURGING");
 
@@ -500,8 +497,8 @@ Shelly.addEventHandler(function(event) {
         Timer.clear(warmTimer);
         warmTimer = null;
         feedRatio = 0;
-        activeOn = lowOn;
-        activeOff = lowOff;
+        activeOn = LOW_ON;
+        activeOff = LOW_OFF;
         state = "RUNNING";
         subState = "RUN";
         setRelay(R_IGNITER, false, function() {
