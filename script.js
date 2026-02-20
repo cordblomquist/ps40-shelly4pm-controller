@@ -1,4 +1,4 @@
-// WINSLOW PS40 CONTROLLER - v14.3 (Reduced Max Feed Rate)
+// WINSLOW PS40 CONTROLLER - v14.3 (Standby on Start if Warm)
 // -----------------------------------------------------------------------
 // ARCHITECTURE: Waterfall RPC (Serialized Calls), Event-Driven
 // v12.1 FIX: Clears boot/purge timers on Start to prevent phantom shutdown.
@@ -10,6 +10,7 @@
 // v14.1 NEW: All operational parameters tunable from Shelly UI.
 // v14.2 NEW: Hardcoded feed rates (PS40 spec ~2.5x ratio). Tunable temp bands
 //            via Day Cold, Night Cold, Hysteresis sliders. Warm = Cold + Hysteresis.
+// v14.3 NEW: Start button enters STANDBY if room is already above cold threshold.
 
 // PIN MAPPING
 let R_EXHAUST  = 0; 
@@ -91,7 +92,7 @@ let warmTimer         = null;
 let lastVac  = "WAIT";    
 let lastFire = "WAIT"; 
 
-print("WINSLOW CONTROLLER v14.2: SIMPLIFIED FEED & TUNABLE TEMP BANDS");
+print("WINSLOW CONTROLLER v14.3: STANDBY ON START IF WARM");
 
 // 1. HELPER: The "Safe Switch" (Prevents RPC flooding)
 // ----------------------------------------------------
