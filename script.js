@@ -1,4 +1,4 @@
-// WINSLOW PS40 CONTROLLER - v14.2 (Simplified Feed & Tunable Temp Bands)
+// WINSLOW PS40 CONTROLLER - v14.3 (Reduced Max Feed Rate)
 // -----------------------------------------------------------------------
 // ARCHITECTURE: Waterfall RPC (Serialized Calls), Event-Driven
 // v12.1 FIX: Clears boot/purge timers on Start to prevent phantom shutdown.
@@ -41,12 +41,12 @@ let T_PURGE      = 1800; // 30 min -- manual/safety shutdown purge
 let T_THERMO_PURGE = 900; // 15 min -- thermostat-initiated purge
 let T_VAC_SETTLE = 5;    // delay after exhaust ON before vacuum check
 
-// FEED RATE BOUNDS (ms) -- hardcoded per PS40 spec (~2.5x ratio)
-// LOW: minimum viable flame. HIGH: maximum feed for extreme cold.
+// FEED RATE BOUNDS (ms) -- hardcoded (~2.2x ratio, reduced from PS40 spec)
+// LOW: minimum viable flame. HIGH: reduced max to prevent overheating.
 let LOW_ON   = 2500;  // Minimum auger ON (ms)
 let LOW_OFF  = 5500;  // Minimum auger OFF (ms)
-let HIGH_ON  = 6500;  // Maximum auger ON (ms)
-let HIGH_OFF = 1500;  // Maximum auger OFF (ms)
+let HIGH_ON  = 5500;  // Maximum auger ON (ms)
+let HIGH_OFF = 2500;  // Maximum auger OFF (ms)
 
 // TEMPERATURE BANDS (deg F) -- synced from Number:200/201/203 every heartbeat
 // Warm threshold = Cold threshold + Hysteresis. Provides shutdown/restart cycling.
