@@ -350,6 +350,10 @@ function startStartup() {
     let cold = isDaytime ? dayCold : nightCold;
     if (roomTemp > cold) {
         print("TEMP: " + roomTemp + "F > " + cold + "F. Room warm, entering STANDBY instead of START.");
+        
+        // Clear any pending purge timers so they don't reset state to IDLE later
+        Timer.clear(phaseTimer);
+        
         state = "STANDBY";
         subState = "";
         return;
