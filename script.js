@@ -1,4 +1,4 @@
-// WINSLOW PS40 CONTROLLER - v14.3 (Standby on Start if Warm)
+// WINSLOW PS40 CONTROLLER - v14.4 (Standby on Start if Warm)
 // -----------------------------------------------------------------------
 // ARCHITECTURE: Waterfall RPC (Serialized Calls), Event-Driven
 // v12.1 FIX: Clears boot/purge timers on Start to prevent phantom shutdown.
@@ -11,6 +11,7 @@
 // v14.2 NEW: Hardcoded feed rates (PS40 spec ~2.5x ratio). Tunable temp bands
 //            via Day Cold, Night Cold, Hysteresis sliders. Warm = Cold + Hysteresis.
 // v14.3 NEW: Start button enters STANDBY if room is already above cold threshold.
+// v14.4 FIX: Clear purge timer when entering STANDBY via start button.
 
 // PIN MAPPING
 let R_EXHAUST  = 0; 
@@ -92,7 +93,7 @@ let warmTimer         = null;
 let lastVac  = "WAIT";    
 let lastFire = "WAIT"; 
 
-print("WINSLOW CONTROLLER v14.3: STANDBY ON START IF WARM");
+print("WINSLOW CONTROLLER v14.4: STANDBY ON START IF WARM");
 
 // 1. HELPER: The "Safe Switch" (Prevents RPC flooding)
 // ----------------------------------------------------
