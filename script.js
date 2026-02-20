@@ -345,6 +345,16 @@ function startStartup() {
     if (state !== "IDLE" && state !== "PURGING") return;
     print("CMD: Start Received.");
     
+    // 1. TEMPERATURE CHECK: If room is already warm, enter STANDBY instead of starting.
+    let cold = isDaytime ? dayCold : nightCold;
+    if (roomTemp > cold) {
+        print("TEMP: " + roomTemp + "F > " + cold + "F. Room warm, entering STANDBY instead of START.");
+        state = "STANDBY";
+        subState = "";
+        return;
+    }
+
+    // 2. STARTUP SEQUENCE
     // Always start at minimum feed -- EMA ramps up organically
     feedRatio = 0;
     activeOn = LOW_ON;
