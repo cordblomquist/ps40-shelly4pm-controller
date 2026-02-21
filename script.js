@@ -1,4 +1,4 @@
-// WINSLOW PS40 CONTROLLER - v14.4 (Standby on Start if Warm)
+// WINSLOW PS40 CONTROLLER - v14.5 (Reduced High Feed Rate)
 // -----------------------------------------------------------------------
 // ARCHITECTURE: Waterfall RPC (Serialized Calls), Event-Driven
 // v12.1 FIX: Clears boot/purge timers on Start to prevent phantom shutdown.
@@ -12,6 +12,7 @@
 //            via Day Cold, Night Cold, Hysteresis sliders. Warm = Cold + Hysteresis.
 // v14.3 NEW: Start button enters STANDBY if room is already above cold threshold.
 // v14.4 FIX: Clear purge timer when entering STANDBY via start button.
+// v14.5 FIX: Reduced HIGH feed rate bounds (HIGH_ON: 4500ms, HIGH_OFF: 3500ms).
 
 // PIN MAPPING
 let R_EXHAUST  = 0; 
@@ -43,12 +44,12 @@ let T_PURGE      = 1800; // 30 min -- manual/safety shutdown purge
 let T_THERMO_PURGE = 900; // 15 min -- thermostat-initiated purge
 let T_VAC_SETTLE = 5;    // delay after exhaust ON before vacuum check
 
-// FEED RATE BOUNDS (ms) -- hardcoded (~2.2x ratio, reduced from PS40 spec)
+// FEED RATE BOUNDS (ms) -- hardcoded (~1.8x ratio, reduced from PS40 spec)
 // LOW: minimum viable flame. HIGH: reduced max to prevent overheating.
 let LOW_ON   = 2500;  // Minimum auger ON (ms)
 let LOW_OFF  = 5500;  // Minimum auger OFF (ms)
-let HIGH_ON  = 5500;  // Maximum auger ON (ms)
-let HIGH_OFF = 2500;  // Maximum auger OFF (ms)
+let HIGH_ON  = 4500;  // Maximum auger ON (ms)
+let HIGH_OFF = 3500;  // Maximum auger OFF (ms)
 
 // TEMPERATURE BANDS (deg F) -- synced from Number:200/201/203 every heartbeat
 // Warm threshold = Cold threshold + Hysteresis. Provides shutdown/restart cycling.
@@ -93,7 +94,7 @@ let warmTimer         = null;
 let lastVac  = "WAIT";    
 let lastFire = "WAIT"; 
 
-print("WINSLOW CONTROLLER v14.4: STANDBY ON START IF WARM");
+print("WINSLOW CONTROLLER v14.5: REDUCED HIGH FEED RATE");
 
 // 1. HELPER: The "Safe Switch" (Prevents RPC flooding)
 // ----------------------------------------------------
