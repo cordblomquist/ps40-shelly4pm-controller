@@ -8,8 +8,12 @@ PELLET_STOVE_CONTROLLER_GUIDE.md
 # Local tooling
 deploy.sh
 
-# Cursor project config
+# Editor config
 .cursor/
+CLAUDE.md
+
+# OS
+.DS_Store
 logs/
 stove-logger.py
 archive/
