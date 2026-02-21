@@ -1,4 +1,4 @@
-// WINSLOW PS40 CONTROLLER - v14.7 (Slower Feed Ramp Up)
+// WINSLOW PS40 CONTROLLER - v14.8 (Fix Fans On in Standby)
 // -----------------------------------------------------------------------
 // ARCHITECTURE: Waterfall RPC (Serialized Calls), Event-Driven
 // v12.1 FIX: Clears boot/purge timers on Start to prevent phantom shutdown.
@@ -15,6 +15,7 @@
 // v14.5 FIX: Reduced HIGH feed rate bounds (HIGH_ON: 4500ms, HIGH_OFF: 3500ms).
 // v14.6 FIX: Reduced HIGH feed rate bounds again (HIGH_ON: 3500ms, HIGH_OFF: 4500ms).
 // v14.7 FIX: Slower EMA ramp up (ALPHA_UP: 0.04 = ~29 min) for longer, lower burns.
+// v14.8 FIX: Properly turn off fans when entering STANDBY from a cold boot purge.
 
 // PIN MAPPING
 let R_EXHAUST  = 0; 
@@ -96,7 +97,7 @@ let warmTimer         = null;
 let lastVac  = "WAIT";    
 let lastFire = "WAIT"; 
 
-print("WINSLOW CONTROLLER v14.7: SLOWER FEED RAMP UP");
+print("WINSLOW CONTROLLER v14.8: FIX FANS ON IN STANDBY");
 
 // 1. HELPER: The "Safe Switch" (Prevents RPC flooding)
 // ----------------------------------------------------
@@ -355,8 +356,19 @@ function startStartup() {
     if (roomTemp > cold) {
         print("TEMP: " + roomTemp + "F > " + cold + "F. Room warm, entering STANDBY instead of START.");
         
-        // Clear any pending purge timers so they don't reset state to IDLE later
-        Timer.clear(phaseTimer);
+        if (state === "PURGING") {
+            if (lastFire === "HOT") {
+                print("Stove is HOT. Changing purge destination to STANDBY. Fans will remain on until purge completes.");
+                subState = "THERMO_COOLING";
+                return;
+            } else {
+                print("Stove is COLD. Cancelling purge and turning off fans immediately.");
+                Timer.clear(phaseTimer);
+                setRelay(R_EXHAUST, false, function() {
+                    setRelay(R_CONV_FAN, false);
+                });
+            }
+        }
         
         state = "STANDBY";
         subState = "";

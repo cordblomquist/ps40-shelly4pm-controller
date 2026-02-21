@@ -1,6 +1,6 @@
 # Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)
 
-**Current Version:** v14.7 (Stable)  
+**Current Version:** v14.8 (Stable)  
 **Hardware:** Shelly Pro 4PM + Shelly H&T Gen3  
 **Language:** Shelly mJS (Micro-JavaScript)
 
@@ -22,6 +22,9 @@ The controller manages the entire combustion cycle using a **Finite State Machin
 ---
 
 ## Changelog
+
+### v14.8 -- Fix Fans On in Standby
+* **FIX:** Fixed a bug introduced in v14.4 where pressing Start during a boot purge (when the room is warm) would cancel the purge timer but fail to turn off the relays, leaving the exhaust and convection fans running indefinitely in `STANDBY` mode. It now properly turns off the fans if the stove is cold, or lets the purge finish before entering `STANDBY` if the stove is hot.
 
 ### v14.7 -- Slower Feed Ramp Up
 * **CHANGED:** Decreased `ALPHA_UP` from `0.08` to `0.04` to slow down the Exponential Moving Average (EMA) ramp-up. It now takes ~29 minutes to reach 90% of the target feed rate, up from ~14 minutes. This results in longer, lower burns rather than quickly ramping up to a hot fire.
