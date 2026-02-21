@@ -1,6 +1,6 @@
 # Winslow PS40 Pellet Stove Controller (Shelly Pro 4PM)
 
-**Current Version:** v14.5 (Stable)  
+**Current Version:** v14.6 (Stable)  
 **Hardware:** Shelly Pro 4PM + Shelly H&T Gen3  
 **Language:** Shelly mJS (Micro-JavaScript)
 
@@ -22,6 +22,9 @@ The controller manages the entire combustion cycle using a **Finite State Machin
 ---
 
 ## Changelog
+
+### v14.6 -- Reduced High Feed Rate Again
+* **CHANGED:** Reduced HIGH feed rate bounds again (`HIGH_ON: 3500ms`, `HIGH_OFF: 4500ms`) to prevent the stove from getting too hot to the touch. Ratio is now ~1.4x.
 
 ### v14.5 -- Standby on Start & Reduced High Feed Rate
 * **NEW:** Pressing Start when the room is already above the cold threshold now puts the stove directly into `STANDBY` instead of running the ignition sequence.
@@ -139,8 +142,8 @@ The Shelly Pro 4PM has a limit of 5 concurrent RPC calls. Relays are toggled one
 | :--- | :--- | :--- |
 | `LOW_ON` | 2500ms | Minimum auger ON (floor) |
 | `LOW_OFF` | 5500ms | Minimum auger OFF (floor) |
-| `HIGH_ON` | 4500ms | Maximum auger ON (ceiling) |
-| `HIGH_OFF` | 3500ms | Maximum auger OFF (ceiling) |
+| `HIGH_ON` | 3500ms | Maximum auger ON (ceiling) |
+| `HIGH_OFF` | 4500ms | Maximum auger OFF (ceiling) |
 | `ALPHA_UP` | 0.08 | EMA up-ramp speed (~14 min to 90%) |
 | `ALPHA_DOWN` | 0.15 | EMA down-ramp speed (~7 min to 90%) |
 | `TEMP_MAX_AGE` | 3600s | Max seconds before temp data is stale |
