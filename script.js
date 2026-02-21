@@ -1,4 +1,4 @@
-// WINSLOW PS40 CONTROLLER - v14.6 (Reduced High Feed Rate Again)
+// WINSLOW PS40 CONTROLLER - v14.7 (Slower Feed Ramp Up)
 // -----------------------------------------------------------------------
 // ARCHITECTURE: Waterfall RPC (Serialized Calls), Event-Driven
 // v12.1 FIX: Clears boot/purge timers on Start to prevent phantom shutdown.
@@ -14,6 +14,7 @@
 // v14.4 FIX: Clear purge timer when entering STANDBY via start button.
 // v14.5 FIX: Reduced HIGH feed rate bounds (HIGH_ON: 4500ms, HIGH_OFF: 3500ms).
 // v14.6 FIX: Reduced HIGH feed rate bounds again (HIGH_ON: 3500ms, HIGH_OFF: 4500ms).
+// v14.7 FIX: Slower EMA ramp up (ALPHA_UP: 0.04 = ~29 min) for longer, lower burns.
 
 // PIN MAPPING
 let R_EXHAUST  = 0; 
@@ -59,7 +60,7 @@ let nightCold  = 56;  // Default -- synced from Number:201
 let hysteresis = 4;   // Default -- synced from Number:203
 
 // EMA SMOOTHING (asymmetric)
-let ALPHA_UP   = 0.08; // ~14 min to reach 90% of target (ramp up)
+let ALPHA_UP   = 0.04; // ~29 min to reach 90% of target (ramp up)
 let ALPHA_DOWN = 0.15; // ~7 min to reach 90% of target (ramp down)
 
 // STALENESS & SCHEDULE -- schedule synced from Number:205/206 every heartbeat
@@ -95,7 +96,7 @@ let warmTimer         = null;
 let lastVac  = "WAIT";    
 let lastFire = "WAIT"; 
 
-print("WINSLOW CONTROLLER v14.6: REDUCED HIGH FEED RATE AGAIN");
+print("WINSLOW CONTROLLER v14.7: SLOWER FEED RAMP UP");
 
 // 1. HELPER: The "Safe Switch" (Prevents RPC flooding)
 // ----------------------------------------------------
