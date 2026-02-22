@@ -21,50 +21,7 @@ The controller manages the entire combustion cycle using a **Finite State Machin
 
 ---
 
-## Changelog
-
-### v14.8 -- Fix Fans On in Standby
-* **FIX:** Fixed a bug introduced in v14.4 where pressing Start during a boot purge (when the room is warm) would cancel the purge timer but fail to turn off the relays, leaving the exhaust and convection fans running indefinitely in `STANDBY` mode. It now properly turns off the fans if the stove is cold, or lets the purge finish before entering `STANDBY` if the stove is hot.
-
-### v14.7 -- Slower Feed Ramp Up
-* **CHANGED:** Decreased `ALPHA_UP` from `0.08` to `0.04` to slow down the Exponential Moving Average (EMA) ramp-up. It now takes ~29 minutes to reach 90% of the target feed rate, up from ~14 minutes. This results in longer, lower burns rather than quickly ramping up to a hot fire.
-
-### v14.6 -- Reduced High Feed Rate Again
-* **CHANGED:** Reduced HIGH feed rate bounds again (`HIGH_ON: 3500ms`, `HIGH_OFF: 4500ms`) to prevent the stove from getting too hot to the touch. Ratio is now ~1.4x.
-
-### v14.5 -- Standby on Start & Reduced High Feed Rate
-* **NEW:** Pressing Start when the room is already above the cold threshold now puts the stove directly into `STANDBY` instead of running the ignition sequence.
-* **FIX:** Purge timers are properly cleared when entering Standby via the Start button to prevent phantom shutdown to IDLE.
-* **CHANGED:** Reduced HIGH feed rate bounds (`HIGH_ON: 4500ms`, `HIGH_OFF: 3500ms`) to prevent over-feeding. Ratio is now ~1.8x.
-* **CHANGED:** Local python logger `stove-logger.py` updated to filter out noisy RPC logs, leaving only clear script outputs.
-
-### v14.2 -- Simplified Feed & Tunable Temperature Bands
-* **NEW: Feed rates hardcoded per PS40 spec.** LOW: 2500ms ON / 5500ms OFF. HIGH: 6500ms ON / 1500ms OFF (~2.5x ratio). Removes 4 Number components.
-* **NEW: Tunable temperature bands via Shelly app.**
-    * `Number:200` (Day Cold) -- restart threshold for daytime (default 67F)
-    * `Number:201` (Night Cold) -- restart threshold for nighttime (default 56F)
-    * `Number:203` (Hysteresis) -- degrees above cold for warm/shutdown threshold (default 4F)
-    * Warm = Cold + Hysteresis. Day: 67-71F. Night: 56-60F with defaults.
-* **CHANGED: Heartbeat shows temperature bands.** Format: `D:67-71 N:56-60`.
-* **REMOVED:** Number:200-201 (feed timing), Number:203-204 (low fire). Now hardcoded.
-
-### v14.1 -- UI-Tunable Parameters
-* All operational parameters tunable from Shelly app (feed rates, schedule hours).
-* Removed Boolean:201 (Night thermostat) -- temperature + schedule handles everything.
-
-### v14.0 -- Proportional Temperature Control
-* EMA-smoothed proportional feed rate based on room temperature from Number:202.
-* Asymmetric smoothing: slow to escalate, fast to back off.
-* Temperature staleness safety (>1 hour without update -> shutdown).
-
-### v13.x -- Earlier Versions
-* v13.3: Cloud-tunable HIGH fire rates.
-* v13.2: Purge-safe vacuum failure handling.
-* v13.1: Exhaust-first vacuum check.
-* v13.0: Thermostat auto-control via H&T Gen3.
-
-### v12.1 -- Phantom Shutdown Fix
-* Clear purge timer on Start to prevent phantom shutdown 10 min after boot.
+See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 ---
 
